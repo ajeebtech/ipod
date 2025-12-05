@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@clerk/nextjs": "^6.36.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.2",
+    "@supabase/supabase-js": "^2.86.2",
     "@types/react-youtube": "^7.6.2",
     "@types/three": "^0.181.0",
     "clsx": "^2.1.1",
@@ -19,6 +21,7 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-youtube": "^10.1.0",
+    "svix": "^1.82.0",
     "tailwind-merge": "^3.4.0",
     "three": "^0.181.2"
   },
