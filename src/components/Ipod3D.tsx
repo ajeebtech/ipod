@@ -4,9 +4,10 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2 } from 'lucide-react';
-import { useUser, SignInButton, UserButton } from "@clerk/nextjs";
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film } from 'lucide-react';
+import { useUser, SignInButton, UserButton, SignIn } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
+import { fetchPlaylistItems } from '../lib/youtube-api';
 
 // --- Icons ---
 
@@ -24,6 +25,18 @@ function CustomPauseIcon({ size = 24, fill = "currentColor" }: { size?: number, 
         <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" fill={fill}>
             <rect width="256" height="256" fill="none" />
             <path d="M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z" />
+        </svg>
+    );
+}
+
+function CustomPlaylistIcon({ size = 24, className = "" }: { size?: number, className?: string }) {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" className={className} fill="currentColor">
+            <rect width="256" height="256" fill="none" />
+            <line x1="40" y1="64" x2="216" y2="64" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
+            <line x1="40" y1="128" x2="136" y2="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
+            <line x1="40" y1="192" x2="136" y2="192" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
+            <polygon points="240 160 176 200 176 120 240 160" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
         </svg>
     );
 }
@@ -85,10 +98,32 @@ function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayP
     );
 }
 
+function SignInOverlay() {
+    const { isSignedIn } = useUser();
+    if (isSignedIn) return null;
+
+    return (
+        <Html
+            transform
+            position={[0, 0, 4]}
+            rotation={[0, 0, 0]}
+            scale={0.02}
+            style={{
+                width: '400px',
+                height: 'auto',
+            }}
+        >
+            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 shadow-2xl">
+                <SignIn />
+            </div>
+        </Html>
+    );
+}
+
 export function Ipod3D() {
     const { user, isLoaded, isSignedIn } = useUser();
     const [videoUrl, setVideoUrl] = useState('');
-    const [history, setHistory] = useState<{ id: string; url: string; title: string; dbId?: number }[]>([]);
+    const [history, setHistory] = useState<{ id: string; url: string; title: string; dbId?: number; fromPlaylist?: boolean; playlistId?: string; playlistTitle?: string }[]>([]);
     const [currentIndex, setCurrentIndex] = useState<number>(-1);
     const [isPlaying, setIsPlaying] = useState(false);
     const [hasStarted, setHasStarted] = useState(false);
@@ -106,6 +141,17 @@ export function Ipod3D() {
         }
     }, []);
 
+    // Auto-scroll logic for history
+    const historyContainerRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (historyContainerRef.current) {
+            const activeItem = historyContainerRef.current.children[currentIndex];
+            if (activeItem) {
+                activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+    }, [currentIndex, history.length]);
+
     useEffect(() => {
         if (isSignedIn && user) {
             const fetchHistory = async () => {
@@ -116,14 +162,36 @@ export function Ipod3D() {
                     .order('created_at', { ascending: true });
 
                 if (data) {
-                    const mappedHistory = data.map((item: any) => ({
-                        id: item.video_id,
-                        url: item.url,
-                        title: item.title,
-                        dbId: item.id
-                    }));
-                    setHistory(mappedHistory);
-                    // if (mappedHistory.length > 0) setCurrentIndex(mappedHistory.length - 1); // Removed autoplay
+                    const mappedHistory = data.map((item: any) => {
+                        // Priority: DB columns -> URL param fallback
+                        let playlistId = item.playlist_id;
+                        let playlistTitle = item.playlist_title;
+
+                        if (!playlistId) {
+                            const listMatch = item.url.match(/[?&]list=([^#&?]+)/);
+                            playlistId = listMatch ? listMatch[1] : undefined;
+                        }
+
+                        // Default title if still missing (but we have an ID)
+                        if (playlistId && !playlistTitle) {
+                            playlistTitle = 'Playlist';
+                        }
+
+                        return {
+                            id: item.video_id,
+                            url: item.url,
+                            title: item.title,
+                            dbId: item.id,
+                            fromPlaylist: !!playlistId,
+                            playlistId: playlistId,
+                            playlistTitle: playlistTitle
+                        };
+                    });
+                    if (mappedHistory.length > 0) {
+                        setHistory(mappedHistory);
+                        setHasStarted(true);
+                        setCurrentIndex(mappedHistory.length);
+                    }
                 }
             };
             fetchHistory();
@@ -140,6 +208,14 @@ export function Ipod3D() {
     const handleStateChange = async (event: any) => {
         if (event.data === 1) setIsPlaying(true);
         if (event.data === 2) setIsPlaying(false);
+        if (event.data === 0) {
+            setIsPlaying(false);
+            // Only auto-play if the next item is from a playlist
+            const nextItem = history[currentIndex + 1];
+            if (nextItem && nextItem.fromPlaylist) {
+                playNext();
+            }
+        }
 
         const player = event.target;
         if (player && player.getVideoData && isSignedIn && user && currentIndex >= 0) {
@@ -170,14 +246,94 @@ export function Ipod3D() {
 
     const handleConfirm = async () => {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+        const listRegExp = /[?&]list=([^#&?]+)/;
+
         const match = videoUrl.match(regExp);
+        const listMatch = videoUrl.match(listRegExp);
+
+        if (listMatch && listMatch[1]) {
+            // It's a playlist!
+            savePreference();
+            const playlistId = listMatch[1];
+            const playlistItems = await fetchPlaylistItems(playlistId);
+
+            if (playlistItems.items.length > 0) {
+                const newIds = new Set(playlistItems.items.map((i: any) => i.id));
+
+                let dbItems: any[] = [];
+                if (isSignedIn && user) {
+                    // Delete existing entries for these videos
+                    await supabase
+                        .from('history')
+                        .delete()
+                        .eq('user_id', user.id)
+                        .in('video_id', Array.from(newIds));
+
+                    // Insert new entries
+                    const itemsToInsert = playlistItems.items.map((item: any) => ({
+                        user_id: user.id,
+                        video_id: item.id,
+                        url: item.url,
+                        title: item.title,
+                        playlist_id: playlistId,
+                        playlist_title: playlistItems.title
+                    }));
+
+                    const { data } = await supabase.from('history').insert(itemsToInsert).select();
+                    if (data) dbItems = data;
+                }
+
+                setHistory(prev => {
+                    const filtered = prev.filter(item => !newIds.has(item.id));
+                    const newHistoryItems = playlistItems.items.map((item: any) => {
+                        const dbItem = dbItems.find((d: any) => d.video_id === item.id);
+                        return {
+                            id: item.id,
+                            url: item.url,
+                            title: item.title,
+                            dbId: dbItem?.id,
+                            fromPlaylist: true,
+                            playlistId: playlistId,
+                            playlistTitle: playlistItems.title
+                        };
+                    });
+
+                    const nextHistory = [...filtered, ...newHistoryItems];
+
+                    let jumpIndex = nextHistory.length - newHistoryItems.length; // Start of new items
+                    if (match && match[2] && match[2].length === 11) {
+                        const specificId = match[2];
+                        const specificIndex = nextHistory.findIndex(h => h.id === specificId);
+                        if (specificIndex !== -1) jumpIndex = specificIndex;
+                    }
+
+                    setCurrentIndex(jumpIndex);
+                    return nextHistory;
+                });
+
+                setVideoUrl('');
+                setHasStarted(true);
+                return;
+            } else {
+                alert("Could not load playlist. Check your API Key or URL.");
+                console.error("Playlist items were empty.");
+            }
+        }
+
         if (match && match[2].length === 11) {
             savePreference();
             const newId = match[2];
             const title = 'Loading title...';
 
-            let dbId;
+            let dbId: number | undefined;
             if (isSignedIn && user) {
+                // Remove existing entry if it exists to treat this as "latest"
+                await supabase
+                    .from('history')
+                    .delete()
+                    .eq('user_id', user.id)
+                    .eq('video_id', newId);
+
                 const { data, error } = await supabase
                     .from('history')
                     .insert([
@@ -187,9 +343,14 @@ export function Ipod3D() {
                 if (data && data[0]) dbId = data[0].id;
             }
 
-            const newItem = { id: newId, url: videoUrl, title: title, dbId: dbId };
-            setHistory(prev => [...prev, newItem]);
-            setCurrentIndex(prev => history.length);
+            setHistory(prev => {
+                const filtered = prev.filter(item => item.id !== newId);
+                const newItem = { id: newId, url: videoUrl, title: title, dbId: dbId, fromPlaylist: false };
+                const nextHistory = [...filtered, newItem];
+                setCurrentIndex(nextHistory.length - 1);
+                return nextHistory;
+            });
+
             setVideoUrl('');
             setHasStarted(true);
         }
@@ -255,77 +416,157 @@ export function Ipod3D() {
                         <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-white/20 max-h-[300px] overflow-y-auto">
                             <h3 className="text-xs font-bold text-gray-500 mb-2 px-2 uppercase tracking-wider">History</h3>
                             <div className="flex flex-col gap-1">
-                                {history.map((item, idx) => (
-                                    <button key={`${item.id}-${idx}`} onClick={() => playHistoryItem(idx)} className={`text-left text-xs p-2 rounded-lg truncate transition-all ${idx === currentIndex ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>
-                                        {item.title}
-                                    </button>
-                                ))}
+                                {(() => {
+                                    const visibleHistory = history.slice(0, currentIndex + 1);
+                                    const renderedGroups: React.ReactNode[] = [];
+                                    let i = 0;
+                                    while (i < visibleHistory.length) {
+                                        const item = visibleHistory[i];
+
+                                        if (item.fromPlaylist && item.playlistId) {
+                                            // Start of a playlist group?
+                                            // Check consecutive items with same playlistId
+                                            const groupStartIndex = i;
+                                            let groupEndIndex = i;
+                                            while (
+                                                groupEndIndex + 1 < visibleHistory.length &&
+                                                visibleHistory[groupEndIndex + 1].playlistId === item.playlistId
+                                            ) {
+                                                groupEndIndex++;
+                                            }
+
+                                            // Render visual group item
+                                            const isActive = currentIndex >= groupStartIndex && currentIndex <= groupEndIndex;
+                                            const groupTitle = item.playlistTitle || 'Playlist';
+
+                                            renderedGroups.push(
+                                                <button
+                                                    key={`group-${item.playlistId}-${groupStartIndex}`}
+                                                    onClick={() => playHistoryItem(groupStartIndex)}
+                                                    className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
+                                                >
+                                                    <CustomPlaylistIcon size={12} className="shrink-0 opacity-50" />
+                                                    <span className="truncate">{groupTitle}</span>
+                                                </button>
+                                            );
+
+                                            // Skip processed items
+                                            i = groupEndIndex + 1;
+                                        } else {
+                                            // Single item
+                                            const isActive = i === currentIndex;
+                                            renderedGroups.push(
+                                                <button
+                                                    key={`${item.id}-${i}`}
+                                                    onClick={() => playHistoryItem(i)}
+                                                    className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
+                                                >
+                                                    <Film size={12} className="shrink-0 opacity-50" />
+                                                    <span className="truncate">{item.title}</span>
+                                                </button>
+                                            );
+                                            i++;
+                                        }
+                                    }
+                                    return renderedGroups;
+                                })()}
                             </div>
                         </div>
                     )}
                 </div>
             )}
 
-            {/* Input Bar - Top Right */}
+            {/* Upcoming Sidebar - Bottom Right */}
             {hasStarted && (
-                <div className="fixed top-8 right-8 z-50 flex items-center bg-white/80 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/20 transition-all hover:bg-white/95">
-                    <div className="pl-3 pr-2 text-gray-500"><Link2 size={16} /></div>
-                    <input type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onKeyDown={handleKeyDown} placeholder="Paste YouTube URL..." className="w-64 bg-transparent border-none outline-none text-sm text-gray-800 placeholder-gray-400 font-medium" />
-                    <button onClick={handleConfirm} className="flex items-center justify-center w-8 h-8 bg-black text-white rounded-full hover:bg-gray-800 transition-colors ml-1 shadow-sm"><CustomPlayIcon size={12} fill="white" /></button>
-                </div>
-            )}
-
-            {/* Initial Center Input Screen */}
-            {!hasStarted && (
-                <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center font-sans backdrop-blur-[8px] bg-black/40 transition-all duration-1000">
-                    <div className="flex flex-col items-center gap-8 animate-in compile-in zoom-in-95 duration-700 fade-in slide-in-from-bottom-8">
-                        <div className="space-y-2 text-center">
-                            <h2 className="text-white text-3xl font-light tracking-tight">Paste a YouTube URL</h2>
-                            <p className="text-white/60 text-sm font-light">to start watching immediately</p>
-                        </div>
-
-                        <div className="bg-white/10 backdrop-blur-md pl-4 pr-1.5 py-1.5 rounded-2xl border border-white/10 flex items-center w-[420px] shadow-2xl transition-all focus-within:bg-white/15 focus-within:border-white/30 hover:bg-white/15 group">
-                            <div className="mr-3 text-white/40 group-focus-within:text-white/80 transition-colors">
-                                <Link2 size={18} />
-                            </div>
-                            <input
-                                type="text"
-                                value={videoUrl}
-                                onChange={(e) => setVideoUrl(e.target.value)}
-                                onKeyDown={handleKeyDown}
-                                placeholder="youtube.com/watch?v=..."
-                                className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder-white/30 font-light focus:ring-0"
-                                autoFocus
-                            />
-                            <button
-                                onClick={handleConfirm}
-                                className="flex items-center justify-center w-9 h-9 bg-white text-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg ml-2"
-                            >
-                                <CustomPlayIcon size={14} fill="black" />
-                            </button>
-                        </div>
-
-                        <div className="flex flex-col items-center gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                    type="checkbox"
-                                    checked={dontAskAgain}
-                                    onChange={(e) => setDontAskAgain(e.target.checked)}
-                                    className="w-4 h-4 rounded border-white/30 bg-white/10 text-black focus:ring-0 focus:ring-offset-0 transition-colors cursor-pointer"
-                                />
-                                <span className="text-white/40 group-hover:text-white/80 text-xs font-light tracking-wide transition-colors user-select-none">Don't ask again</span>
-                            </label>
-
-                            <button
-                                onClick={handleSkip}
-                                className="text-white/30 hover:text-white text-xs font-medium tracking-wide transition-colors px-4 py-2 rounded-full hover:bg-white/5"
-                            >
-                                Skip for now
-                            </button>
+                <div className="fixed bottom-8 right-8 z-50 flex flex-col gap-4 w-64 items-end pointer-events-none">
+                    <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 pointer-events-auto max-h-[300px] overflow-hidden flex flex-col w-full">
+                        <h3 className="text-xs font-bold text-gray-500 mb-3 px-1 uppercase tracking-wider text-right">Up Next</h3>
+                        <div className="flex flex-col gap-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+                            {history.slice(currentIndex + 1).filter(i => i.fromPlaylist).length === 0 && (
+                                <div className="text-right text-xs text-gray-400 italic py-2">No upcoming videos</div>
+                            )}
+                            {history
+                                .slice(currentIndex + 1)
+                                .map((item, idx) => ({ item, originalIndex: currentIndex + 1 + idx }))
+                                .filter(({ item }) => item.fromPlaylist)
+                                .map(({ item, originalIndex }, idx) => (
+                                    <button
+                                        key={`upcoming-${item.id}-${idx}`}
+                                        onClick={() => playHistoryItem(originalIndex)}
+                                        className="text-right text-sm font-medium p-2 rounded-lg truncate transition-all text-gray-600 hover:bg-black/5 hover:text-black leading-relaxed"
+                                    >
+                                        {item.title}
+                                    </button>
+                                ))}
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Input Bar - Top Right */}
+            {
+                hasStarted && (
+                    <div className="fixed top-8 right-8 z-50 flex items-center bg-white/80 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/20 transition-all hover:bg-white/95">
+                        <div className="pl-3 pr-2 text-gray-500"><Link2 size={16} /></div>
+                        <input type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onKeyDown={handleKeyDown} placeholder="Paste YouTube URL..." className="w-64 bg-transparent border-none outline-none text-sm text-gray-800 placeholder-gray-400 font-medium" />
+                        <button onClick={handleConfirm} className="flex items-center justify-center w-8 h-8 bg-black text-white rounded-full hover:bg-gray-800 transition-colors ml-1 shadow-sm"><CustomPlayIcon size={12} fill="white" /></button>
+                    </div>
+                )
+            }
+
+            {/* Initial Center Input Screen */}
+            {
+                !hasStarted && (
+                    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center font-sans backdrop-blur-[8px] bg-black/40 transition-all duration-1000">
+                        <div className="flex flex-col items-center gap-8 animate-in compile-in zoom-in-95 duration-700 fade-in slide-in-from-bottom-8">
+                            <div className="space-y-2 text-center">
+                                <h2 className="text-white text-3xl font-light tracking-tight">Paste a YouTube URL</h2>
+                                <p className="text-white/60 text-sm font-light">to start watching immediately</p>
+                            </div>
+
+                            <div className="bg-white/10 backdrop-blur-md pl-4 pr-1.5 py-1.5 rounded-2xl border border-white/10 flex items-center w-[420px] shadow-2xl transition-all focus-within:bg-white/15 focus-within:border-white/30 hover:bg-white/15 group">
+                                <div className="mr-3 text-white/40 group-focus-within:text-white/80 transition-colors">
+                                    <Link2 size={18} />
+                                </div>
+                                <input
+                                    type="text"
+                                    value={videoUrl}
+                                    onChange={(e) => setVideoUrl(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="youtube.com/watch?v=..."
+                                    className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder-white/30 font-light focus:ring-0"
+                                    autoFocus
+                                />
+                                <button
+                                    onClick={handleConfirm}
+                                    className="flex items-center justify-center w-9 h-9 bg-white text-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg ml-2"
+                                >
+                                    <CustomPlayIcon size={14} fill="black" />
+                                </button>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer group">
+                                    <input
+                                        type="checkbox"
+                                        checked={dontAskAgain}
+                                        onChange={(e) => setDontAskAgain(e.target.checked)}
+                                        className="w-4 h-4 rounded border-white/30 bg-white/10 text-black focus:ring-0 focus:ring-offset-0 transition-colors cursor-pointer"
+                                    />
+                                    <span className="text-white/40 group-hover:text-white/80 text-xs font-light tracking-wide transition-colors user-select-none">Don't ask again</span>
+                                </label>
+
+                                <button
+                                    onClick={handleSkip}
+                                    className="text-white/30 hover:text-white text-xs font-medium tracking-wide transition-colors px-4 py-2 rounded-full hover:bg-white/5"
+                                >
+                                    Skip for now
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
 
 
             <div className="w-[370px] h-[600px]">
@@ -336,6 +577,7 @@ export function Ipod3D() {
 
                     <group>
                         <Model />
+                        <SignInOverlay />
                         <ScreenOverlay
                             videoId={currentVideoId}
                             onPlayerReady={handlePlayerReady}
@@ -348,8 +590,6 @@ export function Ipod3D() {
                     <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
                 </Canvas>
             </div>
-
-
         </>
     );
 }
