@@ -91,11 +91,20 @@ export function Ipod3D() {
     const [history, setHistory] = useState<{ id: string; url: string; title: string; dbId?: number }[]>([]);
     const [currentIndex, setCurrentIndex] = useState<number>(-1);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [hasStarted, setHasStarted] = useState(false);
+    const [dontAskAgain, setDontAskAgain] = useState(false);
 
     // Player ref
     const playerRef = useRef<YouTubePlayer | null>(null);
 
     const currentVideoId = currentIndex >= 0 && history[currentIndex] ? history[currentIndex].id : null;
+
+    useEffect(() => {
+        const skipStart = localStorage.getItem('ipod-skip-start');
+        if (skipStart === 'true') {
+            setHasStarted(true);
+        }
+    }, []);
 
     useEffect(() => {
         if (isSignedIn && user) {
@@ -114,7 +123,7 @@ export function Ipod3D() {
                         dbId: item.id
                     }));
                     setHistory(mappedHistory);
-                    if (mappedHistory.length > 0) setCurrentIndex(mappedHistory.length - 1);
+                    // if (mappedHistory.length > 0) setCurrentIndex(mappedHistory.length - 1); // Removed autoplay
                 }
             };
             fetchHistory();
@@ -153,10 +162,17 @@ export function Ipod3D() {
         }
     };
 
+    const savePreference = () => {
+        if (dontAskAgain) {
+            localStorage.setItem('ipod-skip-start', 'true');
+        }
+    };
+
     const handleConfirm = async () => {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
         const match = videoUrl.match(regExp);
         if (match && match[2].length === 11) {
+            savePreference();
             const newId = match[2];
             const title = 'Loading title...';
 
@@ -175,7 +191,13 @@ export function Ipod3D() {
             setHistory(prev => [...prev, newItem]);
             setCurrentIndex(prev => history.length);
             setVideoUrl('');
+            setHasStarted(true);
         }
+    };
+
+    const handleSkip = () => {
+        savePreference();
+        setHasStarted(true);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -199,54 +221,112 @@ export function Ipod3D() {
 
     const playHistoryItem = (index: number) => {
         setCurrentIndex(index);
+        setHasStarted(true);
     };
 
     return (
         <>
             {/* Sidebar */}
-            <div className="fixed top-8 left-8 z-50 flex flex-col gap-4 w-64">
-                <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20">
-                    <div className="flex justify-between items-center mb-4">
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Player</span>
-                        <div className="flex gap-2">
-                            {isLoaded && (
-                                isSignedIn ? <UserButton /> : <SignInButton mode="modal"><button className="text-xs bg-black text-white px-3 py-1.5 rounded-full font-medium hover:bg-gray-800 transition-colors">Sign In</button></SignInButton>
-                            )}
+            {hasStarted && (
+                <div className="fixed top-8 left-8 z-50 flex flex-col gap-4 w-64">
+                    <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20">
+                        <div className="flex justify-between items-center mb-4">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Player</span>
+                            <div className="flex gap-2">
+                                {isLoaded && (
+                                    isSignedIn ? <UserButton /> : <SignInButton mode="modal"><button className="text-xs bg-black text-white px-3 py-1.5 rounded-full font-medium hover:bg-gray-800 transition-colors">Sign In</button></SignInButton>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                            <button onClick={playPrev} disabled={currentIndex <= 0} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
+                                <SkipBack size={20} fill="currentColor" />
+                            </button>
+                            <button onClick={togglePlayPause} className="p-3 bg-black text-white rounded-full hover:bg-gray-800 transition-transform active:scale-95 shadow-lg">
+                                {isPlaying ? <CustomPauseIcon size={24} fill="white" /> : <CustomPlayIcon size={24} fill="white" />}
+                            </button>
+                            <button onClick={playNext} disabled={currentIndex >= history.length - 1} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
+                                <SkipForward size={20} fill="currentColor" />
+                            </button>
                         </div>
                     </div>
+                    {history.length > 0 && (
+                        <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-white/20 max-h-[300px] overflow-y-auto">
+                            <h3 className="text-xs font-bold text-gray-500 mb-2 px-2 uppercase tracking-wider">History</h3>
+                            <div className="flex flex-col gap-1">
+                                {history.map((item, idx) => (
+                                    <button key={`${item.id}-${idx}`} onClick={() => playHistoryItem(idx)} className={`text-left text-xs p-2 rounded-lg truncate transition-all ${idx === currentIndex ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>
+                                        {item.title}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
-                    <div className="flex items-center justify-between gap-2">
-                        <button onClick={playPrev} disabled={currentIndex <= 0} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
-                            <SkipBack size={20} fill="currentColor" />
-                        </button>
-                        <button onClick={togglePlayPause} className="p-3 bg-black text-white rounded-full hover:bg-gray-800 transition-transform active:scale-95 shadow-lg">
-                            {isPlaying ? <CustomPauseIcon size={24} fill="white" /> : <CustomPlayIcon size={24} fill="white" />}
-                        </button>
-                        <button onClick={playNext} disabled={currentIndex >= history.length - 1} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
-                            <SkipForward size={20} fill="currentColor" />
-                        </button>
+            {/* Input Bar - Top Right */}
+            {hasStarted && (
+                <div className="fixed top-8 right-8 z-50 flex items-center bg-white/80 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/20 transition-all hover:bg-white/95">
+                    <div className="pl-3 pr-2 text-gray-500"><Link2 size={16} /></div>
+                    <input type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onKeyDown={handleKeyDown} placeholder="Paste YouTube URL..." className="w-64 bg-transparent border-none outline-none text-sm text-gray-800 placeholder-gray-400 font-medium" />
+                    <button onClick={handleConfirm} className="flex items-center justify-center w-8 h-8 bg-black text-white rounded-full hover:bg-gray-800 transition-colors ml-1 shadow-sm"><CustomPlayIcon size={12} fill="white" /></button>
+                </div>
+            )}
+
+            {/* Initial Center Input Screen */}
+            {!hasStarted && (
+                <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center font-sans backdrop-blur-[8px] bg-black/40 transition-all duration-1000">
+                    <div className="flex flex-col items-center gap-8 animate-in compile-in zoom-in-95 duration-700 fade-in slide-in-from-bottom-8">
+                        <div className="space-y-2 text-center">
+                            <h2 className="text-white text-3xl font-light tracking-tight">Paste a YouTube URL</h2>
+                            <p className="text-white/60 text-sm font-light">to start watching immediately</p>
+                        </div>
+
+                        <div className="bg-white/10 backdrop-blur-md pl-4 pr-1.5 py-1.5 rounded-2xl border border-white/10 flex items-center w-[420px] shadow-2xl transition-all focus-within:bg-white/15 focus-within:border-white/30 hover:bg-white/15 group">
+                            <div className="mr-3 text-white/40 group-focus-within:text-white/80 transition-colors">
+                                <Link2 size={18} />
+                            </div>
+                            <input
+                                type="text"
+                                value={videoUrl}
+                                onChange={(e) => setVideoUrl(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="youtube.com/watch?v=..."
+                                className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder-white/30 font-light focus:ring-0"
+                                autoFocus
+                            />
+                            <button
+                                onClick={handleConfirm}
+                                className="flex items-center justify-center w-9 h-9 bg-white text-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg ml-2"
+                            >
+                                <CustomPlayIcon size={14} fill="black" />
+                            </button>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer group">
+                                <input
+                                    type="checkbox"
+                                    checked={dontAskAgain}
+                                    onChange={(e) => setDontAskAgain(e.target.checked)}
+                                    className="w-4 h-4 rounded border-white/30 bg-white/10 text-black focus:ring-0 focus:ring-offset-0 transition-colors cursor-pointer"
+                                />
+                                <span className="text-white/40 group-hover:text-white/80 text-xs font-light tracking-wide transition-colors user-select-none">Don't ask again</span>
+                            </label>
+
+                            <button
+                                onClick={handleSkip}
+                                className="text-white/30 hover:text-white text-xs font-medium tracking-wide transition-colors px-4 py-2 rounded-full hover:bg-white/5"
+                            >
+                                Skip for now
+                            </button>
+                        </div>
                     </div>
                 </div>
-                {history.length > 0 && (
-                    <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-white/20 max-h-[300px] overflow-y-auto">
-                        <h3 className="text-xs font-bold text-gray-500 mb-2 px-2 uppercase tracking-wider">History</h3>
-                        <div className="flex flex-col gap-1">
-                            {history.map((item, idx) => (
-                                <button key={`${item.id}-${idx}`} onClick={() => playHistoryItem(idx)} className={`text-left text-xs p-2 rounded-lg truncate transition-all ${idx === currentIndex ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}>
-                                    {item.title}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
+            )}
 
-            {/* Input Bar */}
-            <div className="fixed top-8 right-8 z-50 flex items-center bg-white/80 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/20 transition-all hover:bg-white/95">
-                <div className="pl-3 pr-2 text-gray-500"><Link2 size={16} /></div>
-                <input type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onKeyDown={handleKeyDown} placeholder="Paste YouTube URL..." className="w-64 bg-transparent border-none outline-none text-sm text-gray-800 placeholder-gray-400 font-medium" />
-                <button onClick={handleConfirm} className="flex items-center justify-center w-8 h-8 bg-black text-white rounded-full hover:bg-gray-800 transition-colors ml-1 shadow-sm"><CustomPlayIcon size={12} fill="white" /></button>
-            </div>
 
             <div className="w-[370px] h-[600px]">
                 <Canvas camera={{ position: [0, 0, 15], fov: 20 }}>
@@ -268,6 +348,8 @@ export function Ipod3D() {
                     <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
                 </Canvas>
             </div>
+
+
         </>
     );
 }
