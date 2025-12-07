@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
@@ -39,6 +39,130 @@ function CustomPlaylistIcon({ size = 24, className = "" }: { size?: number, clas
             <line x1="40" y1="192" x2="136" y2="192" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
             <polygon points="240 160 176 200 176 120 240 160" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
         </svg>
+    );
+}
+
+// --- Artificial Delay Helper ---
+
+function createDelayResource(ms: number) {
+    let status = 'pending';
+    let promise: Promise<void> | null = null;
+
+    return {
+        read() {
+            if (status === 'pending') {
+                if (!promise) {
+                    promise = new Promise((resolve) => setTimeout(resolve, ms)).then(() => {
+                        status = 'success';
+                    });
+                }
+                throw promise;
+            }
+        }
+    };
+}
+
+const DelayWaiter = ({ resource }: { resource: { read: () => void } }) => {
+    resource.read();
+    return null;
+};
+
+function LoadingState() {
+    return (
+        <Html center>
+            <div className="loader-container">
+                <style>{`
+                    .loader-container {
+                        pointer-events: none;
+                        user-select: none;
+                    }
+                    .wrapper {
+                        width: 200px;
+                        height: 60px;
+                        position: relative;
+                        z-index: 1;
+                    }
+                    .circle {
+                        width: 20px;
+                        height: 20px;
+                        position: absolute;
+                        border-radius: 50%;
+                        background-color: #000;
+                        left: 15%;
+                        transform-origin: 50%;
+                        animation: circle7124 .5s alternate infinite ease;
+                    }
+                    @keyframes circle7124 {
+                        0% {
+                            top: 60px;
+                            height: 5px;
+                            border-radius: 50px 50px 25px 25px;
+                            transform: scaleX(1.7);
+                        }
+                        40% {
+                            height: 20px;
+                            border-radius: 50%;
+                            transform: scaleX(1);
+                        }
+                        100% {
+                            top: 0%;
+                        }
+                    }
+                    .circle:nth-child(2) {
+                        left: 45%;
+                        animation-delay: .2s;
+                    }
+                    .circle:nth-child(3) {
+                        left: auto;
+                        right: 15%;
+                        animation-delay: .3s;
+                    }
+                    .shadow {
+                        width: 20px;
+                        height: 4px;
+                        border-radius: 50%;
+                        background-color: rgba(0,0,0,0.5);
+                        position: absolute;
+                        top: 62px;
+                        transform-origin: 50%;
+                        z-index: -1;
+                        left: 15%;
+                        filter: blur(1px);
+                        animation: shadow046 .5s alternate infinite ease;
+                    }
+                    @keyframes shadow046 {
+                        0% {
+                            transform: scaleX(1.5);
+                        }
+                        40% {
+                            transform: scaleX(1);
+                            opacity: .7;
+                        }
+                        100% {
+                            transform: scaleX(.2);
+                            opacity: .4;
+                        }
+                    }
+                    .shadow:nth-child(4) {
+                        left: 45%;
+                        animation-delay: .2s
+                    }
+                    .shadow:nth-child(5) {
+                        left: auto;
+                        right: 15%;
+                        animation-delay: .3s;
+                    }
+                `}</style>
+                <div className="wrapper">
+                    <div className="circle" />
+                    <div className="circle" />
+                    <div className="circle" />
+                    <div className="shadow" />
+                    <div className="shadow" />
+                    <div className="shadow" />
+                </div>
+            </div>
+        </Html>
     );
 }
 
@@ -158,6 +282,9 @@ export function Ipod3D() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [hasStarted, setHasStarted] = useState(true);
     const [dontAskAgain, setDontAskAgain] = useState(false);
+
+    // Artificial delay resource to ensure loading screen is visible for at least 3 seconds
+    const [delayResource] = useState(() => createDelayResource(3000));
 
     // Player ref
     const playerRef = useRef<YouTubePlayer | null>(null);
@@ -692,14 +819,17 @@ export function Ipod3D() {
                     <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
                     <pointLight position={[-10, -10, -10]} intensity={1} />
 
-                    <group>
-                        <Model />
-                        <ScreenOverlay
-                            videoId={currentVideoId}
-                            onPlayerReady={handlePlayerReady}
-                            onStateChange={handleStateChange}
-                        />
-                    </group>
+                    <Suspense fallback={<LoadingState />}>
+                        <group>
+                            <Model />
+                            <DelayWaiter resource={delayResource} />
+                            <ScreenOverlay
+                                videoId={currentVideoId}
+                                onPlayerReady={handlePlayerReady}
+                                onStateChange={handleStateChange}
+                            />
+                        </group>
+                    </Suspense>
 
                     <Environment preset="studio" />
                     <OrbitControls enableZoom={true} minDistance={0.69} maxDistance={0.69} />
