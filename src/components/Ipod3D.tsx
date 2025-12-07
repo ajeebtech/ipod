@@ -59,7 +59,38 @@ interface ScreenOverlayProps {
     onStateChange: (event: any) => void;
 }
 
+const formatTime = (seconds: number) => {
+    const m = Math.floor(Math.abs(seconds) / 60);
+    const s = Math.floor(Math.abs(seconds) % 60);
+    return `${seconds < 0 ? '-' : ''}${m}:${s.toString().padStart(2, '0')}`;
+};
+
 function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayProps) {
+    const [progress, setProgress] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const playerRef = useRef<YouTubePlayer | null>(null);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (playerRef.current && playerRef.current.getCurrentTime && playerRef.current.getDuration) {
+                const current = playerRef.current.getCurrentTime();
+                const dur = playerRef.current.getDuration();
+                if (dur > 0) {
+                    setProgress((current / dur) * 100);
+                    setCurrentTime(current);
+                    setDuration(dur);
+                }
+            }
+        }, 500);
+        return () => clearInterval(interval);
+    }, []);
+
+    const handleInternalPlayerReady = (event: any) => {
+        playerRef.current = event.target;
+        onPlayerReady(event.target);
+    };
+
     if (!videoId) return null;
     return (
         <Html
@@ -79,7 +110,7 @@ function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayP
                 <div className="w-full h-full relative">
                     <YouTube
                         videoId={videoId}
-                        onReady={(e) => onPlayerReady(e.target)}
+                        onReady={handleInternalPlayerReady}
                         onStateChange={onStateChange}
                         opts={{
                             width: '100%',
@@ -94,6 +125,23 @@ function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayP
                         }}
                         className="w-full h-full"
                     />
+                    {/* Progress Bar */}
+                    {duration > 0 && (
+                        <div className="absolute bottom-6 left-0 w-full px-4 z-[999] flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-white drop-shadow-md w-8 text-right font-mono">
+                                {formatTime(currentTime)}
+                            </span>
+                            <div className="flex-1 h-1.5 bg-white/30 rounded-full overflow-hidden backdrop-blur-sm">
+                                <div
+                                    className="h-full bg-blue-500 transition-all duration-500 ease-linear rounded-full"
+                                    style={{ width: `${progress}%` }}
+                                />
+                            </div>
+                            <span className="text-[10px] font-medium text-white drop-shadow-md w-8 text-left font-mono">
+                                -{formatTime(duration - currentTime)}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
         </Html>
