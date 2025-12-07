@@ -1,20 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
-  title: "iPod Classic",
-  description: "A retro iPod Classic clone playing YouTube videos",
+  title: "an iPod",
+  description: "play your songs here please",
 };
 
 import { ClerkProvider } from "@clerk/nextjs";
@@ -28,9 +19,22 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+          className={`antialiased`}
         >
           {children}
+          <div className="fixed bottom-2 w-full text-center">
+            <span className="text-gray-400 text-xs">
+              made by{" "}
+              <a
+                href="https://x.com/ajeebtech"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-gray-600 inline-block transition-all duration-200 hover:scale-110 hover:font-black hover:text-black"
+              >
+                ajeebtech
+              </a>
+            </span>
+          </div>
         </body>
       </html>
     </ClerkProvider>
