@@ -5,6 +5,7 @@ import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Play, Link2, SkipBack, SkipForward, Trash2, Film } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, SignInButton, UserButton, SignIn } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
 import { fetchPlaylistItems } from '../lib/youtube-api';
@@ -64,6 +65,7 @@ function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayP
         <Html
             transform
             occlude="blending"
+            zIndexRange={[100, 0]}
             position={[0.01, 0.05, 0.00]}
             rotation={[-0.1, 1.55, 0.1]}
             scale={0.01}
@@ -98,27 +100,7 @@ function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayP
     );
 }
 
-function SignInOverlay() {
-    const { isSignedIn } = useUser();
-    if (isSignedIn) return null;
 
-    return (
-        <Html
-            transform
-            position={[0, 0, 4]}
-            rotation={[0, 0, 0]}
-            scale={0.02}
-            style={{
-                width: '400px',
-                height: 'auto',
-            }}
-        >
-            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 shadow-2xl">
-                <SignIn />
-            </div>
-        </Html>
-    );
-}
 
 export function Ipod3D() {
     const { user, isLoaded, isSignedIn } = useUser();
@@ -145,12 +127,13 @@ export function Ipod3D() {
     const historyContainerRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (historyContainerRef.current) {
-            const activeItem = historyContainerRef.current.children[currentIndex];
+            // Find the active element purely by DOM attribute, ignoring index complexity (groups/reverse)
+            const activeItem = historyContainerRef.current.querySelector('[data-active="true"]');
             if (activeItem) {
                 activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         }
-    }, [currentIndex, history.length]);
+    }, [currentIndex, history]);
 
     useEffect(() => {
         if (isSignedIn && user) {
@@ -380,9 +363,58 @@ export function Ipod3D() {
         if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
     };
 
-    const playHistoryItem = (index: number) => {
-        setCurrentIndex(index);
-        setHasStarted(true);
+    const playHistoryItem = async (index: number) => {
+        const selectedItem = history[index];
+        if (!selectedItem) return;
+
+        // Bump to top (end of array)
+        setHistory(prev => {
+            let itemsToMove: typeof prev = [];
+            let remainingItems: typeof prev = [];
+
+            if (selectedItem.fromPlaylist && selectedItem.playlistId) {
+                // Move entire playlist group
+                itemsToMove = prev.filter(item => item.playlistId === selectedItem.playlistId);
+                remainingItems = prev.filter(item => item.playlistId !== selectedItem.playlistId);
+            } else {
+                // Move single item
+                itemsToMove = [selectedItem];
+                remainingItems = prev.filter(item => item.id !== selectedItem.id);
+            }
+
+            // New history: [Old items ..., Moved Items]
+            // Since we display REVERSED, Moved Items will appear at TOP.
+            const newHistory = [...remainingItems, ...itemsToMove];
+
+            // Recalculate index relative to the new list
+            // We want to play the *first* item of the moved group (or the single item)
+            // which is now at: length - itemsToMove.length
+            const newIndex = remainingItems.length; // Start of the appended group
+
+            setCurrentIndex(newIndex);
+            setHasStarted(true);
+
+            return newHistory;
+        });
+
+        // Update DB timestamp to persist order
+        if (isSignedIn && user) {
+            const timestamp = new Date().toISOString();
+            if (selectedItem.fromPlaylist && selectedItem.playlistId) {
+                await supabase.from('history')
+                    .update({ created_at: timestamp })
+                    .eq('user_id', user.id)
+                    .eq('playlist_id', selectedItem.playlistId);
+            } else if (selectedItem.dbId) {
+                await supabase.from('history')
+                    .update({ created_at: timestamp })
+                    .eq('id', selectedItem.dbId);
+            }
+        } else {
+            // If not persistent, just start
+            setHasStarted(true);
+            setCurrentIndex(index); // Fallback if bump fails (unlikely)
+        }
     };
 
     return (
@@ -412,65 +444,85 @@ export function Ipod3D() {
                             </button>
                         </div>
                     </div>
-                    {history.length > 0 && (
+                    {(history.length > 0 || !isSignedIn) && (
                         <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-white/20 max-h-[300px] overflow-y-auto">
                             <h3 className="text-xs font-bold text-gray-500 mb-2 px-2 uppercase tracking-wider">History</h3>
-                            <div className="flex flex-col gap-1">
-                                {(() => {
-                                    const visibleHistory = history.slice(0, currentIndex + 1);
-                                    const renderedGroups: React.ReactNode[] = [];
-                                    let i = 0;
-                                    while (i < visibleHistory.length) {
-                                        const item = visibleHistory[i];
+                            {!isSignedIn ? (
+                                <div className="flex flex-col gap-3 p-2">
+                                    <p className="text-xs text-gray-600 leading-relaxed font-medium">
+                                        To save your videos into history, please sign in.
+                                    </p>
+                                    <SignInButton mode="modal">
+                                        <button className="w-full text-xs bg-black text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors shadow-sm">
+                                            Sign In
+                                        </button>
+                                    </SignInButton>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-1" ref={historyContainerRef}>
+                                    {(() => {
+                                        const visibleHistory = history;
+                                        const renderedGroups: React.ReactNode[] = [];
+                                        let i = 0;
+                                        while (i < visibleHistory.length) {
+                                            const item = visibleHistory[i];
 
-                                        if (item.fromPlaylist && item.playlistId) {
-                                            // Start of a playlist group?
-                                            // Check consecutive items with same playlistId
-                                            const groupStartIndex = i;
-                                            let groupEndIndex = i;
-                                            while (
-                                                groupEndIndex + 1 < visibleHistory.length &&
-                                                visibleHistory[groupEndIndex + 1].playlistId === item.playlistId
-                                            ) {
-                                                groupEndIndex++;
+                                            if (item.fromPlaylist && item.playlistId) {
+                                                // Start of a playlist group?
+                                                // Check consecutive items with same playlistId
+                                                const groupStartIndex = i;
+                                                let groupEndIndex = i;
+                                                while (
+                                                    groupEndIndex + 1 < visibleHistory.length &&
+                                                    visibleHistory[groupEndIndex + 1].playlistId === item.playlistId
+                                                ) {
+                                                    groupEndIndex++;
+                                                }
+
+                                                // Render visual group item
+                                                const isActive = currentIndex >= groupStartIndex && currentIndex <= groupEndIndex;
+                                                const groupTitle = item.playlistTitle || 'Playlist';
+
+                                                renderedGroups.push(
+                                                    <motion.button
+                                                        layout
+                                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                                        key={`group-${item.playlistId}`} // Stable key
+                                                        data-active={isActive}
+                                                        onClick={() => playHistoryItem(groupStartIndex)}
+                                                        className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
+                                                    >
+                                                        <CustomPlaylistIcon size={12} className="shrink-0 opacity-50" />
+                                                        <span className="truncate">{groupTitle}</span>
+                                                    </motion.button>
+                                                );
+
+                                                // Skip processed items
+                                                i = groupEndIndex + 1;
+                                            } else {
+                                                // Single item
+                                                const itemIndex = i;
+                                                const isActive = itemIndex === currentIndex;
+                                                renderedGroups.push(
+                                                    <motion.button
+                                                        layout
+                                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                                        key={`item-${item.id}`} // Stable key
+                                                        data-active={isActive}
+                                                        onClick={() => playHistoryItem(itemIndex)}
+                                                        className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
+                                                    >
+                                                        <Film size={12} className="shrink-0 opacity-50" />
+                                                        <span className="truncate">{item.title}</span>
+                                                    </motion.button>
+                                                );
+                                                i++;
                                             }
-
-                                            // Render visual group item
-                                            const isActive = currentIndex >= groupStartIndex && currentIndex <= groupEndIndex;
-                                            const groupTitle = item.playlistTitle || 'Playlist';
-
-                                            renderedGroups.push(
-                                                <button
-                                                    key={`group-${item.playlistId}-${groupStartIndex}`}
-                                                    onClick={() => playHistoryItem(groupStartIndex)}
-                                                    className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
-                                                >
-                                                    <CustomPlaylistIcon size={12} className="shrink-0 opacity-50" />
-                                                    <span className="truncate">{groupTitle}</span>
-                                                </button>
-                                            );
-
-                                            // Skip processed items
-                                            i = groupEndIndex + 1;
-                                        } else {
-                                            // Single item
-                                            const isActive = i === currentIndex;
-                                            renderedGroups.push(
-                                                <button
-                                                    key={`${item.id}-${i}`}
-                                                    onClick={() => playHistoryItem(i)}
-                                                    className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
-                                                >
-                                                    <Film size={12} className="shrink-0 opacity-50" />
-                                                    <span className="truncate">{item.title}</span>
-                                                </button>
-                                            );
-                                            i++;
                                         }
-                                    }
-                                    return renderedGroups;
-                                })()}
-                            </div>
+                                        return renderedGroups.reverse();
+                                    })()}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -480,10 +532,10 @@ export function Ipod3D() {
             {hasStarted && (
                 <div className="fixed bottom-8 right-8 z-50 flex flex-col gap-4 w-64 items-end pointer-events-none">
                     <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 pointer-events-auto max-h-[300px] overflow-hidden flex flex-col w-full">
-                        <h3 className="text-xs font-bold text-gray-500 mb-3 px-1 uppercase tracking-wider text-right">Up Next</h3>
+                        <h3 className="text-xs font-bold text-gray-500 mb-3 px-1 uppercase tracking-wider text-left">Up Next</h3>
                         <div className="flex flex-col gap-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
                             {history.slice(currentIndex + 1).filter(i => i.fromPlaylist).length === 0 && (
-                                <div className="text-right text-xs text-gray-400 italic py-2">No upcoming videos</div>
+                                <div className="text-left text-xs text-gray-400 italic py-2">No upcoming videos</div>
                             )}
                             {history
                                 .slice(currentIndex + 1)
@@ -493,7 +545,7 @@ export function Ipod3D() {
                                     <button
                                         key={`upcoming-${item.id}-${idx}`}
                                         onClick={() => playHistoryItem(originalIndex)}
-                                        className="text-right text-sm font-medium p-2 rounded-lg truncate transition-all text-gray-600 hover:bg-black/5 hover:text-black leading-relaxed"
+                                        className="w-full text-left text-sm font-medium p-2 rounded-lg transition-all text-gray-600 hover:bg-black/5 hover:text-black break-words"
                                     >
                                         {item.title}
                                     </button>
@@ -577,7 +629,6 @@ export function Ipod3D() {
 
                     <group>
                         <Model />
-                        <SignInOverlay />
                         <ScreenOverlay
                             videoId={currentVideoId}
                             onPlayerReady={handlePlayerReady}
