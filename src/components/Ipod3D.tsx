@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film } from 'lucide-react';
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, SignInButton, UserButton, SignIn } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
@@ -403,6 +403,13 @@ export function Ipod3D() {
         }
     };
 
+    const handleSeek = (seconds: number) => {
+        if (playerRef.current && playerRef.current.getCurrentTime) {
+            const currentTime = playerRef.current.getCurrentTime();
+            playerRef.current.seekTo(currentTime + seconds, true);
+        }
+    };
+
     const playNext = () => {
         if (currentIndex < history.length - 1) setCurrentIndex(prev => prev + 1);
     };
@@ -481,13 +488,23 @@ export function Ipod3D() {
                         </div>
 
                         <div className="flex items-center justify-between gap-2">
-                            <button onClick={playPrev} disabled={currentIndex <= 0} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
+                            <button onClick={playPrev} disabled={currentIndex <= 0} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors" title="Previous Video">
                                 <SkipBack size={20} fill="currentColor" />
                             </button>
+
+                            <button onClick={() => handleSeek(-5)} className="p-2 rounded-full hover:bg-gray-100 transition-colors" title="Rewind 5s">
+                                <Rewind size={20} fill="currentColor" />
+                            </button>
+
                             <button onClick={togglePlayPause} className="p-3 bg-black text-white rounded-full hover:bg-gray-800 transition-transform active:scale-95 shadow-lg">
                                 {isPlaying ? <CustomPauseIcon size={24} fill="white" /> : <CustomPlayIcon size={24} fill="white" />}
                             </button>
-                            <button onClick={playNext} disabled={currentIndex >= history.length - 1} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors">
+
+                            <button onClick={() => handleSeek(5)} className="p-2 rounded-full hover:bg-gray-100 transition-colors" title="Forward 5s">
+                                <FastForward size={20} fill="currentColor" />
+                            </button>
+
+                            <button onClick={playNext} disabled={currentIndex >= history.length - 1} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors" title="Next Video">
                                 <SkipForward size={20} fill="currentColor" />
                             </button>
                         </div>
