@@ -196,13 +196,15 @@ interface ScreenOverlayProps {
     channelName?: string;
     lastPlayed?: any;
     onResume?: () => void;
+    showHome?: boolean;
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome }: ScreenOverlayProps) {
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [view, setView] = useState<'home' | 'liked_songs'>('home');
+    const [isPaused, setIsPaused] = useState(false);
     const playerRef = useRef<YouTubePlayer | null>(null);
 
     // --- Format Helper ---
@@ -241,8 +243,11 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                 const dur = playerRef.current.getDuration();
                 if (dur > 0) {
                     setProgress((current / dur) * 100);
-                    setCurrentTime(current);
                     setDuration(dur);
+                    if (playerRef.current.getPlayerState) {
+                        const state = playerRef.current.getPlayerState();
+                        setIsPaused(state !== 1 && state !== 3); // 1 = playing, 3 = buffering
+                    }
                 }
             }
         }, 500);
@@ -275,9 +280,79 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
     // --- Renders ---
 
-    // 1. Menu View (Default when no video)
-    if (!videoId) {
-        return (
+    const showMenu = !videoId || showHome;
+
+    return (
+        <>
+            {/* MINI PLAYER (Floating) */}
+            {showHome && videoId && (
+                <Html
+                    position={[0, 1.8, 0]}
+                    center
+                    style={{ pointerEvents: 'none' }} // Wrapper none
+                >
+                    <div className="w-48 bg-black/80 backdrop-blur-md rounded-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2 pointer-events-auto transition-all hover:scale-105">
+                        {/* Info */}
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 relative bg-gray-800">
+                                <img src={`https://img.youtube.com/vi/${videoId}/default.jpg`} className="w-full h-full object-cover opacity-80" alt="" />
+                                {/* Playing Indicator */}
+                                {!isPaused && (
+                                    <div className="absolute inset-0 flex items-end justify-center gap-0.5 pb-1">
+                                        <div className="w-0.5 bg-green-400 h-2 animate-[bounce_1s_infinite]" style={{ animationDelay: '0s' }} />
+                                        <div className="w-0.5 bg-green-400 h-3 animate-[bounce_1.2s_infinite]" style={{ animationDelay: '0.1s' }} />
+                                        <div className="w-0.5 bg-green-400 h-1.5 animate-[bounce_0.8s_infinite]" style={{ animationDelay: '0.2s' }} />
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                <div className="text-white text-[10px] font-bold truncate leading-tight">{displayTitle}</div>
+                                <div className="text-white/60 text-[9px] truncate">{displayArtist}</div>
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (playerRef.current) {
+                                        if (isPaused) playerRef.current.playVideo();
+                                        else playerRef.current.pauseVideo();
+                                        setIsPaused(!isPaused);
+                                    }
+                                }}
+                                className="w-6 h-6 rounded-full bg-white flex items-center justify-center hover:bg-gray-200 transition-colors"
+                            >
+                                {isPaused ? <CustomPlayIcon size={10} fill="black" /> : (
+                                    <div className="flex gap-0.5">
+                                        <div className="w-1 h-2.5 bg-black rounded-[1px]" />
+                                        <div className="w-1 h-2.5 bg-black rounded-[1px]" />
+                                    </div>
+                                )}
+                            </button>
+
+                            {/* Progress */}
+                            <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
+                                <div className="h-full bg-green-400" style={{ width: `${progress}%` }} />
+                            </div>
+
+                            <div className="text-[8px] text-white/50 font-mono tabular-nums">
+                                {formatTime(Math.max(0, duration - currentTime))}
+                            </div>
+                        </div>
+
+                        {/* Resume Text */}
+                        <button
+                            onClick={onResume}
+                            className="text-[9px] text-center text-white/40 hover:text-white mt-1 transition-colors border-t border-white/5 pt-1 w-full"
+                        >
+                            Click to Expanded View
+                        </button>
+                    </div>
+                </Html>
+            )}
+
             <Html
                 transform
                 occlude="blending"
@@ -292,201 +367,8 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                 }}
             >
                 <div className="w-full h-full bg-white border-2 border-black rounded-[4px] relative flex font-sans overflow-hidden box-border shadow-inner pointer-events-auto">
-                    {view === 'home' ? (
-                        <div className="w-full h-full flex font-sans">
-                            {/* Left: Custom Home Content */}
-                            <div className="w-1/2 h-full bg-white flex flex-col border-r border-[#e0e0e0]">
-                                <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-center shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
-                                    <span className="text-[12px] font-bold text-white drop-shadow-sm">iPod</span>
-                                </div>
-                                <div className="flex-1 flex flex-col py-2">
-                                    <div className="px-2 mb-2">
-                                        <p className="text-[11px] font-semibold text-black leading-tight text-center">
-                                            What do you want to listen to?
-                                        </p>
-                                    </div>
-
-                                    <button
-                                        onClick={() => setView('liked_songs')}
-                                        className="w-full bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold"
-                                    >
-                                        <span>Liked Songs</span>
-                                        <span className="text-[10px]">›</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Right: Graphic / Preview */}
-                            <div className="w-1/2 h-full bg-[#f2f2f2] relative flex items-center justify-center overflow-hidden">
-                                {lastPlayed ? (
-                                    <button
-                                        onClick={onResume}
-                                        className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto hover:opacity-90 transition-opacity"
-                                    >
-                                        <div className="mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest scale-90">
-                                            Last Played
-                                        </div>
-                                        <div
-                                            className="w-full flex flex-col items-center justify-center"
-                                            style={{
-                                                transform: 'perspective(600px) rotateY(-25deg) scale(1) translateX(-5px) translateY(5px)',
-                                                transformStyle: 'preserve-3d'
-                                            }}
-                                        >
-                                            {/* Main Album Art */}
-                                            <div className="w-32 aspect-square relative z-10 shadow-xl border border-white/20">
-                                                <img
-                                                    src={`https://img.youtube.com/vi/${lastPlayed.id}/hqdefault.jpg`}
-                                                    alt="Album Art"
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-
-                                            {/* Reflection */}
-                                            <div className="w-32 h-16 relative overflow-hidden mt-1">
-                                                <img
-                                                    src={`https://img.youtube.com/vi/${lastPlayed.id}/hqdefault.jpg`}
-                                                    alt="Reflection"
-                                                    className="w-full aspect-square object-cover scale-y-[-1] opacity-60 blur-[1px]"
-                                                    style={{ maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 100%)' }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </button>
-                                ) : (
-                                    <div className="relative w-20 h-20 opacity-10">
-                                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full text-black">
-                                            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                                        </svg>
-                                    </div>
-                                )}
-                                <div className="absolute top-1 right-2">
-                                    <Battery size={14} fill="#4ade80" className="text-gray-600" />
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="w-full h-full flex flex-col bg-white">
-                            <div className="h-8 bg-gradient-to-b from-[#f8f8f8] to-[#e0e0e0] flex items-center px-2 border-b border-[#c0c0c0] shadow-sm shrink-0">
-                                <button
-                                    onClick={() => setView('home')}
-                                    className="mr-2 p-1 hover:bg-black/5 rounded-full"
-                                >
-                                    <ChevronDown size={16} className="rotate-90 text-gray-600" />
-                                </button>
-                                <span className="text-xs font-bold text-gray-800">Liked Songs</span>
-                                <span className="ml-auto text-[10px] text-gray-500 font-medium">{likedSongs.length} Songs</span>
-                            </div>
-                            <div className="flex-1 overflow-y-auto">
-                                {likedSongs.length === 0 ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
-                                        <Heart size={32} className="mb-2 opacity-20" />
-                                        <p className="text-xs">No liked songs yet</p>
-                                    </div>
-                                ) : (
-                                    <ul className="divide-y divide-gray-100">
-                                        {likedSongs.map((song) => (
-                                            <li key={song.id} className="flex items-center gap-2 p-2 hover:bg-blue-50 transition-colors group">
-                                                <button
-                                                    onClick={() => onPlay(song)}
-                                                    className="flex-1 flex flex-col text-left min-w-0"
-                                                >
-                                                    <span className="text-xs font-semibold text-gray-800 truncate leading-snug">{song.title}</span>
-                                                    <span className="text-[9px] text-gray-500">
-                                                        {song.duration ? formatTime(song.duration) : '--:--'}
-                                                    </span>
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); onUnlike(song); }}
-                                                    className="p-1.5 hover:bg-red-50 rounded-full transition-colors group/heart"
-                                                >
-                                                    {/* Ideally pass specific song ID to toggle like, but for now just visual or playing */}
-                                                    <Heart size={14} className="fill-red-500 text-red-500 group-hover/heart:text-red-600" />
-                                                </button>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </Html>
-        );
-    }
-
-    // 2. Now Playing View
-    return (
-        <Html
-            transform
-            occlude="blending"
-            zIndexRange={[100, 0]}
-            position={[0.015, 0.05, 0.00]}
-            rotation={[-0.10, 1.57, 0.10]}
-            scale={0.011}
-            style={{
-                width: '320px',
-                height: '240px',
-                pointerEvents: 'none',
-            }}
-        >
-            <div className="w-full h-full bg-white border-2 border-black rounded-[4px] relative flex flex-col font-sans overflow-hidden box-border shadow-inner">
-                {/* Header: 'Now Playing' */}
-                {/* Header: 'Now Playing' */}
-                <div className="h-6 bg-gradient-to-b from-[#fdffff] to-[#cbe9fe] flex items-center px-1 shadow-sm shrink-0 z-10 border-b border-[#95aec5] relative">
-                    {/* Left: Blue Home Button */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onGoHome(); }}
-                        className="flex items-center pointer-events-auto hover:opacity-75 transition-opacity"
-                        title="Home"
-                    >
-                        <Home size={12} fill="#3b82f6" className="text-[#2563eb]" />
-                    </button>
-
-                    {/* Center: Title */}
-                    <div className="absolute left-1/2 -translate-x-1/2 text-[11px] font-semibold text-black drop-shadow-[0_1px_0_rgba(255,255,255,0.8)]">
-                        Now Playing
-                    </div>
-
-                    {/* Right: Green Battery */}
-                    <div className="ml-auto">
-                        <Battery size={16} fill="#4ade80" className="text-gray-600" />
-                    </div>
-                </div>
-
-                {/* Main Split Content */}
-                <div className="flex-1 flex min-h-0 bg-white">
-                    {/* Left: Album Art / Video */}
-                    <div className="w-[140px] h-full bg-white relative shrink-0 border-r border-[#d1d5db] flex items-center justify-center overflow-hidden">
-                        {/* 3D Wrapper */}
-                        <div
-                            className="w-full flex flex-col"
-                            style={{
-                                transform: 'perspective(600px) rotateY(25deg) scale(0.85) translateX(8px) translateY(24px)',
-                                transformStyle: 'preserve-3d'
-                            }}
-                        >
-                            {/* Main Album Art */}
-                            <div className="w-full aspect-square relative z-10 shadow-xl">
-                                <img
-                                    src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
-                                    alt="Album Art"
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
-
-                            {/* Reflection */}
-                            <div className="w-full h-16 relative overflow-hidden mt-1">
-                                <img
-                                    src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
-                                    alt="Reflection"
-                                    className="w-full aspect-square object-cover scale-y-[-1] opacity-50 blur-[1px]"
-                                    style={{ maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 20%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 20%, rgba(0,0,0,0) 100%)' }}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Hidden Player for Audio Only */}
+                    {/* Persistent Player - Hidden but mounted */}
+                    {videoId && (
                         <div className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none overflow-hidden z-0">
                             <YouTube
                                 videoId={videoId}
@@ -508,59 +390,242 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                 }}
                             />
                         </div>
-                    </div>
+                    )}
 
-                    {/* Right: Info */}
-                    <div className="flex-1 p-3 flex flex-col justify-center min-w-0 bg-[#f8f9fa]">
-                        <h1 className="text-sm font-bold text-[#1a1a1a] leading-tight line-clamp-3 mb-1 tracking-tight">
-                            {displayTitle}
-                        </h1>
-                        <h2 className="text-[11px] font-semibold text-[#555] truncate">
-                            {displayArtist}
-                        </h2>
-                        <h3 className="text-[10px] text-[#888] truncate mb-auto mt-0.5">
-                            {/* Placeholder for Album */}
-                            {playingSource}
-                        </h3>
+                    {showMenu ? (
+                        // --- MENU VIEW (Home / Liked Songs) ---
+                        <div className="w-full h-full flex font-sans relative z-10">
+                            {view === 'home' ? (
+                                <div className="w-full h-full flex font-sans">
+                                    {/* Left: Custom Home Content */}
+                                    <div className="w-1/2 h-full bg-white flex flex-col border-r border-[#e0e0e0]">
+                                        <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-center shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
+                                            <span className="text-[12px] font-bold text-white drop-shadow-sm">iPod</span>
+                                        </div>
+                                        <div className="flex-1 flex flex-col py-2">
+                                            <div className="px-2 mb-2">
+                                                <p className="text-[11px] font-semibold text-black leading-tight text-center">
+                                                    What do you want to listen to?
+                                                </p>
+                                            </div>
 
-                        <div className="mt-2 flex items-center justify-between">
-                            <div className="text-[9px] text-[#666] font-medium tracking-wide">
-                                {index} of {total}
-                            </div>
-                            <div className="flex gap-1 pointer-events-auto items-center">
+                                            <button
+                                                onClick={() => setView('liked_songs')}
+                                                className="w-full bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold"
+                                            >
+                                                <span>Liked Songs</span>
+                                                <span className="text-[10px]">›</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Right: Graphic / Preview */}
+                                    <div className="w-1/2 h-full bg-[#f2f2f2] relative flex items-center justify-center overflow-hidden">
+                                        {lastPlayed ? (
+                                            <button
+                                                onClick={onResume}
+                                                className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto hover:opacity-90 transition-opacity"
+                                            >
+                                                <div className="mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest scale-90">
+                                                    Last Played
+                                                </div>
+                                                <div
+                                                    className="w-full flex flex-col items-center justify-center"
+                                                    style={{
+                                                        transform: 'perspective(600px) rotateY(-25deg) scale(1) translateX(-5px) translateY(5px)',
+                                                        transformStyle: 'preserve-3d'
+                                                    }}
+                                                >
+                                                    {/* Main Album Art */}
+                                                    <div className="w-32 aspect-square relative z-10 shadow-xl border border-white/20">
+                                                        <img
+                                                            src={`https://img.youtube.com/vi/${lastPlayed.id}/hqdefault.jpg`}
+                                                            alt="Album Art"
+                                                            className="w-full h-full object-cover"
+                                                        />
+                                                    </div>
+
+                                                    {/* Reflection */}
+                                                    <div className="w-32 h-16 relative overflow-hidden mt-1">
+                                                        <img
+                                                            src={`https://img.youtube.com/vi/${lastPlayed.id}/hqdefault.jpg`}
+                                                            alt="Reflection"
+                                                            className="w-full aspect-square object-cover scale-y-[-1] opacity-60 blur-[1px]"
+                                                            style={{ maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 100%)' }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ) : (
+                                            <div className="relative w-20 h-20 opacity-10">
+                                                <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full text-black">
+                                                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                                                </svg>
+                                            </div>
+                                        )}
+                                        <div className="absolute top-1 right-2">
+                                            <Battery size={14} fill="#4ade80" className="text-gray-600" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="w-full h-full flex flex-col bg-white">
+                                    <div className="h-8 bg-gradient-to-b from-[#f8f8f8] to-[#e0e0e0] flex items-center px-2 border-b border-[#c0c0c0] shadow-sm shrink-0">
+                                        <button
+                                            onClick={() => setView('home')}
+                                            className="mr-2 p-1 hover:bg-black/5 rounded-full"
+                                        >
+                                            <ChevronDown size={16} className="rotate-90 text-gray-600" />
+                                        </button>
+                                        <span className="text-xs font-bold text-gray-800">Liked Songs</span>
+                                        <span className="ml-auto text-[10px] text-gray-500 font-medium">{likedSongs.length} Songs</span>
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto">
+                                        {likedSongs.length === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
+                                                <Heart size={32} className="mb-2 opacity-20" />
+                                                <p className="text-xs">No liked songs yet</p>
+                                            </div>
+                                        ) : (
+                                            <ul className="divide-y divide-gray-100">
+                                                {likedSongs.map((song) => (
+                                                    <li key={song.id} className="flex items-center gap-2 p-2 hover:bg-blue-50 transition-colors group">
+                                                        <button
+                                                            onClick={() => onPlay(song)}
+                                                            className="flex-1 flex flex-col text-left min-w-0"
+                                                        >
+                                                            <span className="text-xs font-semibold text-gray-800 truncate leading-snug">{song.title}</span>
+                                                            <span className="text-[9px] text-gray-500">
+                                                                {song.duration ? formatTime(song.duration) : '--:--'}
+                                                            </span>
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); onUnlike(song); }}
+                                                            className="p-1.5 hover:bg-red-50 rounded-full transition-colors group/heart"
+                                                        >
+                                                            {/* Ideally pass specific song ID to toggle like, but for now just visual or playing */}
+                                                            <Heart size={14} className="fill-red-500 text-red-500 group-hover/heart:text-red-600" />
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        // --- NOW PLAYING VIEW ---
+                        <div className="w-full h-full flex flex-col relative z-10">
+                            {/* Header: 'Now Playing' */}
+                            <div className="h-6 bg-gradient-to-b from-[#fdffff] to-[#cbe9fe] flex items-center px-1 shadow-sm shrink-0 z-10 border-b border-[#95aec5] relative">
+                                {/* Left: Blue Home Button */}
                                 <button
-                                    onClick={(e) => { e.stopPropagation(); onToggleLike(); }}
-                                    className="p-1.5 hover:scale-110 active:scale-95 transition-transform group"
-                                    title={isLiked ? "Remove from Liked" : "Add to Liked"}
+                                    onClick={(e) => { e.stopPropagation(); onGoHome(); }}
+                                    className="flex items-center pointer-events-auto hover:opacity-75 transition-opacity"
+                                    title="Home"
                                 >
-                                    <Heart
-                                        size={18}
-                                        className={`transition-colors ${isLiked ? "fill-red-500 text-red-500" : "text-[#888] group-hover:text-[#666]"}`}
-                                    />
+                                    <Home size={12} fill="#3b82f6" className="text-[#2563eb]" />
                                 </button>
+
+                                {/* Center: Title */}
+                                <div className="absolute left-1/2 -translate-x-1/2 text-[11px] font-semibold text-black drop-shadow-[0_1px_0_rgba(255,255,255,0.8)]">
+                                    Now Playing
+                                </div>
+
+                                {/* Right: Green Battery */}
+                                <div className="ml-auto">
+                                    <Battery size={16} fill="#4ade80" className="text-gray-600" />
+                                </div>
+                            </div>
+
+                            {/* Main Split Content */}
+                            <div className="flex-1 flex min-h-0 bg-white">
+                                {/* Left: Album Art / Video */}
+                                <div className="w-[140px] h-full bg-white relative shrink-0 border-r border-[#d1d5db] flex items-center justify-center overflow-hidden">
+                                    {/* 3D Wrapper */}
+                                    <div
+                                        className="w-full flex flex-col"
+                                        style={{
+                                            transform: 'perspective(600px) rotateY(25deg) scale(0.85) translateX(8px) translateY(24px)',
+                                            transformStyle: 'preserve-3d'
+                                        }}
+                                    >
+                                        {/* Main Album Art */}
+                                        <div className="w-full aspect-square relative z-10 shadow-xl">
+                                            <img
+                                                src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                                                alt="Album Art"
+                                                className="w-full h-full object-cover"
+                                            />
+                                        </div>
+
+                                        {/* Reflection */}
+                                        <div className="w-full h-16 relative overflow-hidden mt-1">
+                                            <img
+                                                src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                                                alt="Reflection"
+                                                className="w-full aspect-square object-cover scale-y-[-1] opacity-50 blur-[1px]"
+                                                style={{ maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 20%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 20%, rgba(0,0,0,0) 100%)' }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right: Info */}
+                                <div className="flex-1 p-3 flex flex-col justify-center min-w-0 bg-[#f8f9fa]">
+                                    <h1 className="text-sm font-bold text-[#1a1a1a] leading-tight line-clamp-3 mb-1 tracking-tight">
+                                        {displayTitle}
+                                    </h1>
+                                    <h2 className="text-[11px] font-semibold text-[#555] truncate">
+                                        {displayArtist}
+                                    </h2>
+                                    <h3 className="text-[10px] text-[#888] truncate mb-auto mt-0.5">
+                                        {/* Placeholder for Album */}
+                                        {playingSource}
+                                    </h3>
+
+                                    <div className="mt-2 flex items-center justify-between">
+                                        <div className="text-[9px] text-[#666] font-medium tracking-wide">
+                                            {index} of {total}
+                                        </div>
+                                        <div className="flex gap-1 pointer-events-auto items-center">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); onToggleLike(); }}
+                                                className="p-1.5 hover:scale-110 active:scale-95 transition-transform group"
+                                                title={isLiked ? "Remove from Liked" : "Add to Liked"}
+                                            >
+                                                <Heart
+                                                    size={18}
+                                                    className={`transition-colors ${isLiked ? "fill-red-500 text-red-500" : "text-[#888] group-hover:text-[#666]"}`}
+                                                />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Bottom: Progress Bar */}
+                            <div className="h-8 bg-[#f8f9fa] px-3 flex flex-col justify-center shrink-0 border-t border-[#e5e7eb]">
+                                <div className="w-full h-1.5 bg-[#d1d5db] rounded-sm overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-[#6ba4ef] to-[#407ad6] shadow-sm relative"
+                                        style={{ width: `${progress}%` }}
+                                    >
+                                        {/* Little shine at the end */}
+                                        <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-white/50" />
+                                    </div>
+                                </div>
+                                <div className="flex justify-between text-[8px] mt-0.5 font-semibold text-[#666]">
+                                    <span>{formatTime(currentTime)}</span>
+                                    <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
-
-                {/* Bottom: Progress Bar */}
-                <div className="h-8 bg-[#f8f9fa] px-3 flex flex-col justify-center shrink-0 border-t border-[#e5e7eb]">
-                    <div className="w-full h-1.5 bg-[#d1d5db] rounded-sm overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]">
-                        <div
-                            className="h-full bg-gradient-to-r from-[#6ba4ef] to-[#407ad6] shadow-sm relative"
-                            style={{ width: `${progress}%` }}
-                        >
-                            {/* Little shine at the end */}
-                            <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-white/50" />
-                        </div>
-                    </div>
-                    <div className="flex justify-between text-[8px] mt-0.5 font-semibold text-[#666]">
-                        <span>{formatTime(currentTime)}</span>
-                        <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
-                    </div>
-                </div>
-            </div>
-        </Html>
+            </Html>
+        </>
     );
 }
 
@@ -573,8 +638,10 @@ export function Ipod3D() {
     const [currentIndex, setCurrentIndex] = useState<number>(-1);
     const [isPlaying, setIsPlaying] = useState(false);
     const [hasStarted, setHasStarted] = useState(true);
-    const [isHistoryOpen, setIsHistoryOpen] = useState(true);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [showHome, setShowHome] = useState(false);
 
+    // --- History & Persistence ---
     const [dontAskAgain, setDontAskAgain] = useState(false);
     const [playingSource, setPlayingSource] = useState<'From URL' | 'History' | 'Liked Songs'>('History');
     const [isLiked, setIsLiked] = useState(false);
@@ -892,6 +959,7 @@ export function Ipod3D() {
             setVideoUrl('');
             setHasStarted(true);
             setPlayingSource('From URL');
+            setShowHome(false);
         }
     };
 
@@ -991,6 +1059,7 @@ export function Ipod3D() {
             setCurrentIndex(index); // Fallback if bump fails (unlikely)
         }
         setPlayingSource('History');
+        setShowHome(false);
     };
 
     const handlePlayFromLiked = async (song: any) => {
@@ -1019,6 +1088,39 @@ export function Ipod3D() {
 
         setHasStarted(true);
         setPlayingSource('Liked Songs');
+        setShowHome(false);
+
+        // Sync to History (Background)
+        if (user && song.video_id) {
+            // 1. Update Supabase
+            try {
+                // Delete existing entry for this video to bring it to top
+                await supabase.from('history').delete().eq('user_id', user.id).eq('video_id', song.video_id);
+                // Insert new entry
+                const { data, error } = await supabase.from('history').insert({
+                    user_id: user.id,
+                    video_id: song.video_id,
+                    title: song.title,
+                    url: song.url
+                }).select().single();
+
+                if (!error && data) {
+                    // 2. Update Local History State
+                    setHistory(prev => {
+                        const filtered = prev.filter(h => h.id !== song.video_id);
+                        return [...filtered, {
+                            id: song.video_id,
+                            url: song.url,
+                            title: song.title,
+                            dbId: data.id,
+                            channel: undefined // We'll fetch this on play
+                        }];
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to sync liked song to history", err);
+            }
+        }
     };
 
     const handleUnlikeFromList = async (song: any) => {
@@ -1054,12 +1156,14 @@ export function Ipod3D() {
     };
 
     const handleGoHome = () => {
-        setCurrentIndex(-1); // Resets videoId to null -> Shows Menu
-        setIsPlaying(false);
-        setPlayingSource('History'); // Default back
-        // Should we reset queue to history?
-        // Ideally yes, navigating Home resets context.
-        setQueue(history);
+        if (currentVideoId) {
+            setShowHome(true);
+        } else {
+            setCurrentIndex(-1); // Resets videoId to null -> Shows Menu
+            setIsPlaying(false);
+            setPlayingSource('History'); // Default back
+            setQueue(history);
+        }
     };
 
     const handleToggleLike = async () => {
@@ -1359,7 +1463,14 @@ export function Ipod3D() {
                                 onGoHome={handleGoHome}
                                 channelName={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].channel : undefined}
                                 lastPlayed={history.length > 0 ? history[history.length - 1] : undefined}
-                                onResume={() => playHistoryItem(history.length - 1)}
+                                onResume={() => {
+                                    if (currentVideoId && showHome) {
+                                        setShowHome(false);
+                                    } else {
+                                        playHistoryItem(history.length - 1);
+                                    }
+                                }}
+                                showHome={showHome}
                             />
                         </group>
                     </Suspense>
