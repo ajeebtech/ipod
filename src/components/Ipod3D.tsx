@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward } from 'lucide-react';
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, SignInButton, UserButton, SignIn } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
@@ -179,21 +179,43 @@ function Model() {
 
 interface ScreenOverlayProps {
     videoId: string | null;
+    title?: string;
+    index: number;
+    total: number;
     onPlayerReady: (player: YouTubePlayer) => void;
     onStateChange: (event: any) => void;
 }
 
-const formatTime = (seconds: number) => {
-    const m = Math.floor(Math.abs(seconds) / 60);
-    const s = Math.floor(Math.abs(seconds) % 60);
-    return `${seconds < 0 ? '-' : ''}${m}:${s.toString().padStart(2, '0')}`;
-};
-
-function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange }: ScreenOverlayProps) {
     const [progress, setProgress] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const playerRef = useRef<YouTubePlayer | null>(null);
+
+    // --- Format Helper ---
+    const formatTime = (seconds: number) => {
+        const m = Math.floor(Math.abs(seconds) / 60);
+        const s = Math.floor(Math.abs(seconds) % 60);
+        return `${seconds < 0 ? '-' : ''}${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    // --- Artist/Title splitting logic ---
+    let displayTitle = title || "No Title";
+    let displayArtist = "Unknown Artist";
+    if (title) {
+        // Common separator patterns: "Artist - Title", "Artist – Title", "Artist | Title"
+        const parts = title.split(/[-–|]/);
+        if (parts.length >= 2) {
+            displayArtist = parts[0].trim();
+            // Join the rest back in case title had hyphens
+            displayTitle = parts.slice(1).join('-').trim();
+        } else {
+            // Fallback: Use channel name? We don't have it here. 
+            // Just use "YouTube" for artist if we can't parse it?
+            // Or just leave artist blank? Let's default to "YouTube Music" style
+            displayArtist = "YouTube";
+        }
+    }
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -215,57 +237,182 @@ function ScreenOverlay({ videoId, onPlayerReady, onStateChange }: ScreenOverlayP
         onPlayerReady(event.target);
     };
 
-    if (!videoId) return null;
+    // --- Renders ---
+
+    // 1. Menu View (Default when no video)
+    if (!videoId) {
+        const menuItems = ['Music', 'Videos', 'Photos', 'Extras', 'Settings', 'Shuffle Songs'];
+        const selectedIndex = 0; // Default selection
+
+        return (
+            <Html
+                transform
+                occlude="blending"
+                zIndexRange={[100, 0]}
+                position={[0.015, 0.05, 0.00]}
+                rotation={[-0.10, 1.57, 0.10]}
+                scale={0.011}
+                style={{
+                    width: '320px',
+                    height: '240px',
+                    pointerEvents: 'none',
+                }}
+            >
+                <div className="w-full h-full bg-white border-2 border-black rounded-[4px] relative flex font-sans overflow-hidden box-border shadow-inner">
+                    {/* Left: Menu List */}
+                    <div className="w-1/2 h-full bg-white flex flex-col border-r border-[#e0e0e0]">
+                        <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-center shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
+                            <span className="text-[12px] font-bold text-white drop-shadow-sm">iPod</span>
+                        </div>
+                        <ul className="flex-1 overflow-hidden py-1">
+                            {menuItems.map((item, idx) => (
+                                <li
+                                    key={idx}
+                                    className={`px-3 py-1 text-[11px] flex justify-between items-center ${idx === selectedIndex
+                                        ? 'bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] text-white font-semibold'
+                                        : 'text-black font-medium'
+                                        }`}
+                                >
+                                    <span>{item}</span>
+                                    {idx === selectedIndex && <span className="text-[10px]">›</span>}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+
+                    {/* Right: Graphic / Preview */}
+                    <div className="w-1/2 h-full bg-[#f2f2f2] relative flex items-center justify-center overflow-hidden">
+                        {/* Simple floating music note graphic */}
+                        <div className="relative w-20 h-20 opacity-10">
+                            <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full text-black">
+                                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                            </svg>
+                        </div>
+                        {/* Status bar area in Preview? Nah, standard iPod menu is full split */}
+                        <div className="absolute top-1 right-2">
+                            <Battery size={14} className="text-black opacity-40" fill="currentColor" />
+                        </div>
+                    </div>
+                </div>
+            </Html>
+        );
+    }
+
+    // 2. Now Playing View
     return (
         <Html
             transform
             occlude="blending"
             zIndexRange={[100, 0]}
-            position={[0.01, 0.05, 0.00]}
-            rotation={[-0.1, 1.55, 0.1]}
-            scale={0.01}
+            position={[0.015, 0.05, 0.00]}
+            rotation={[-0.10, 1.57, 0.10]}
+            scale={0.011}
             style={{
                 width: '320px',
                 height: '240px',
                 pointerEvents: 'none',
             }}
         >
-            <div className="w-full h-full flex flex-col items-center justify-start bg-black overflow-hidden p-0 pointer-events-none">
-                <div className="w-full h-full relative">
-                    <YouTube
-                        videoId={videoId}
-                        onReady={handleInternalPlayerReady}
-                        onStateChange={onStateChange}
-                        opts={{
-                            width: '100%',
-                            height: '100%',
-                            playerVars: {
-                                autoplay: 1,
-                                controls: 0,
-                                fs: 0,
-                                modestbranding: 1,
-                                rel: 0,
-                            },
-                        }}
-                        className="w-full h-full"
-                    />
-                    {/* Progress Bar */}
-                    {duration > 0 && (
-                        <div className="absolute bottom-6 left-0 w-full px-4 z-[999] flex items-center gap-2">
-                            <span className="text-[10px] font-medium text-white drop-shadow-md w-8 text-right font-mono">
-                                {formatTime(currentTime)}
-                            </span>
-                            <div className="flex-1 h-1.5 bg-white/30 rounded-full overflow-hidden backdrop-blur-sm">
-                                <div
-                                    className="h-full bg-blue-500 transition-all duration-500 ease-linear rounded-full"
-                                    style={{ width: `${progress}%` }}
+            <div className="w-full h-full bg-white border-2 border-black rounded-[4px] relative flex flex-col font-sans overflow-hidden box-border shadow-inner">
+                {/* Header: 'Now Playing' */}
+                <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-between px-2 shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
+                    <div className="text-[10px] font-bold text-white drop-shadow-sm flex items-center gap-1">
+                        <Play size={8} fill="currentColor" />
+                        Now Playing
+                    </div>
+                    <Battery size={14} className="text-white drop-shadow-md" fill="rgba(255,255,255,0.4)" />
+                </div>
+
+                {/* Main Split Content */}
+                <div className="flex-1 flex min-h-0 bg-white">
+                    {/* Left: Album Art / Video */}
+                    <div className="w-[140px] h-full bg-white relative shrink-0 border-r border-[#d1d5db] flex items-center justify-center overflow-hidden">
+                        {/* 3D Wrapper */}
+                        <div
+                            className="w-full flex flex-col"
+                            style={{
+                                transform: 'perspective(600px) rotateY(25deg) scale(0.85) translateX(8px) translateY(24px)',
+                                transformStyle: 'preserve-3d'
+                            }}
+                        >
+                            {/* Main Album Art */}
+                            <div className="w-full aspect-square relative z-10 shadow-xl">
+                                <img
+                                    src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                                    alt="Album Art"
+                                    className="w-full h-full object-cover"
                                 />
                             </div>
-                            <span className="text-[10px] font-medium text-white drop-shadow-md w-8 text-left font-mono">
-                                -{formatTime(duration - currentTime)}
-                            </span>
+
+                            {/* Reflection */}
+                            <div className="w-full h-16 relative overflow-hidden mt-1">
+                                <img
+                                    src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                                    alt="Reflection"
+                                    className="w-full aspect-square object-cover scale-y-[-1] opacity-50 blur-[1px]"
+                                    style={{ maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 20%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 20%, rgba(0,0,0,0) 100%)' }}
+                                />
+                            </div>
                         </div>
-                    )}
+
+                        {/* Hidden Player for Audio Only */}
+                        <div className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none overflow-hidden z-0">
+                            <YouTube
+                                videoId={videoId}
+                                onReady={handleInternalPlayerReady}
+                                onStateChange={onStateChange}
+                                opts={{
+                                    width: '100%',
+                                    height: '100%',
+                                    playerVars: {
+                                        autoplay: 1,
+                                        controls: 0,
+                                        fs: 0,
+                                        modestbranding: 1,
+                                        rel: 0,
+                                        disablekb: 1,
+                                        showinfo: 0,
+                                        iv_load_policy: 3
+                                    },
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Right: Info */}
+                    <div className="flex-1 p-3 flex flex-col justify-center min-w-0 bg-[#f8f9fa]">
+                        <h1 className="text-sm font-bold text-[#1a1a1a] leading-tight line-clamp-3 mb-1 tracking-tight">
+                            {displayTitle}
+                        </h1>
+                        <h2 className="text-[11px] font-semibold text-[#555] truncate">
+                            {displayArtist}
+                        </h2>
+                        <h3 className="text-[10px] text-[#888] truncate mb-auto mt-0.5">
+                            {/* Placeholder for Album */}
+                            Liked Songs
+                        </h3>
+
+                        <div className="mt-2 text-[9px] text-[#666] font-medium tracking-wide">
+                            {index} of {total}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Bottom: Progress Bar */}
+                <div className="h-8 bg-[#f8f9fa] px-3 flex flex-col justify-center shrink-0 border-t border-[#e5e7eb]">
+                    <div className="w-full h-1.5 bg-[#d1d5db] rounded-sm overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]">
+                        <div
+                            className="h-full bg-gradient-to-r from-[#6ba4ef] to-[#407ad6] shadow-sm relative"
+                            style={{ width: `${progress}%` }}
+                        >
+                            {/* Little shine at the end */}
+                            <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-white/50" />
+                        </div>
+                    </div>
+                    <div className="flex justify-between text-[8px] mt-0.5 font-semibold text-[#666]">
+                        <span>{formatTime(currentTime)}</span>
+                        <span>-{formatTime(Math.max(0, duration - currentTime))}</span>
+                    </div>
                 </div>
             </div>
         </Html>
@@ -825,6 +972,9 @@ export function Ipod3D() {
                             <DelayWaiter resource={delayResource} />
                             <ScreenOverlay
                                 videoId={currentVideoId}
+                                title={currentIndex >= 0 && history[currentIndex] ? history[currentIndex].title : undefined}
+                                index={currentIndex + 1}
+                                total={history.length}
                                 onPlayerReady={handlePlayerReady}
                                 onStateChange={handleStateChange}
                             />
