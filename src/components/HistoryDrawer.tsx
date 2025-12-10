@@ -83,7 +83,7 @@ export function HistoryDrawer() {
                     variants={drawerVariants as any}
                     initial="hidden"
                     animate="visible"
-                    className="mx-auto w-full space-y-6 h-full flex flex-col"
+                    className="mx-auto w-full space-y-6 flex flex-col"
                 >
                     <motion.div variants={itemVariants as any} className="flex-shrink-0">
                         <DrawerHeader className="px-0 space-y-2.5 text-left">
@@ -97,7 +97,7 @@ export function HistoryDrawer() {
                         </DrawerHeader>
                     </motion.div>
 
-                    <div className="space-y-4 overflow-y-auto flex-1 pr-2">
+                    <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[60vh] pb-24">
                         {reversedHistory.length === 0 ? (
                             <motion.div variants={itemVariants as any} className="text-center text-zinc-500 py-10">
                                 No history yet.
@@ -107,7 +107,7 @@ export function HistoryDrawer() {
                                 <motion.div
                                     key={`${item.id}-${index}`}
                                     variants={itemVariants as any}
-                                    className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 transition-colors cursor-pointer group"
+                                    className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-blue-600 dark:hover:bg-blue-600 transition-colors cursor-pointer group"
                                     onClick={() => {
                                         // We need to find the correct index in the original array
                                         // The original array is 'history'.
@@ -119,11 +119,11 @@ export function HistoryDrawer() {
                                         <img src={`https://img.youtube.com/vi/${item.id}/default.jpg`} alt="" className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1 min-w-0 text-left">
-                                        <p className="text-sm font-medium truncate text-zinc-900 dark:text-zinc-100">{item.title}</p>
-                                        <p className="text-xs text-zinc-500 truncate">{item.channel || item.playlistTitle || 'Unknown Artist'}</p>
+                                        <p className="text-sm font-medium truncate text-zinc-900 dark:text-zinc-100 group-hover:text-white dark:group-hover:text-white">{item.title}</p>
+                                        <p className="text-xs text-zinc-500 truncate group-hover:text-white/80 dark:group-hover:text-white/80">{item.channel || item.playlistTitle || 'Unknown Artist'}</p>
                                     </div>
                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Play className="w-4 h-4 text-zinc-900" />
+                                        <Play className="w-4 h-4 text-zinc-900 group-hover:text-white" />
                                     </div>
                                 </motion.div>
                             ))
