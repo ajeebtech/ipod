@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
 import { fetchPlaylistItems } from '../lib/youtube-api';
+import MiniPlayer from './MiniPlayer';
 
 // --- Icons ---
 
@@ -197,14 +198,16 @@ interface ScreenOverlayProps {
     lastPlayed?: any;
     onResume?: () => void;
     showHome?: boolean;
+    // New Props for lifted state
+    progress: number;
+    currentTime: number;
+    duration: number;
+    isPaused: boolean;
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome }: ScreenOverlayProps) {
-    const [progress, setProgress] = useState(0);
-    const [currentTime, setCurrentTime] = useState(0);
-    const [duration, setDuration] = useState(0);
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused }: ScreenOverlayProps) {
+    // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs'>('home');
-    const [isPaused, setIsPaused] = useState(false);
     const playerRef = useRef<YouTubePlayer | null>(null);
 
     // --- Format Helper ---
@@ -236,24 +239,10 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
         displayArtist = channelName || "YouTube";
     }
 
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (playerRef.current && playerRef.current.getCurrentTime && playerRef.current.getDuration) {
-                const current = playerRef.current.getCurrentTime();
-                const dur = playerRef.current.getDuration();
-                if (dur > 0) {
-                    setProgress((current / dur) * 100);
-                    setDuration(dur);
-                    setCurrentTime(current);
-                    if (playerRef.current.getPlayerState) {
-                        const state = playerRef.current.getPlayerState();
-                        setIsPaused(state !== 1 && state !== 3); // 1 = playing, 3 = buffering
-                    }
-                }
-            }
-        }, 500);
-        return () => clearInterval(interval);
-    }, []);
+
+
+    // REMOVED: Internal useEffect interval for progress (lifted to Ipod3D)
+
 
     // --- Spacebar Key Handler ---
     useEffect(() => {
@@ -285,74 +274,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
     return (
         <>
-            {/* MINI PLAYER (Floating) */}
-            {showHome && videoId && (
-                <Html
-                    position={[0, 1.8, 0]}
-                    center
-                    style={{ pointerEvents: 'none' }} // Wrapper none
-                >
-                    <div className="w-48 bg-black/80 backdrop-blur-md rounded-2xl border border-white/10 p-3 shadow-2xl flex flex-col gap-2 pointer-events-auto transition-all hover:scale-105">
-                        {/* Info */}
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 relative bg-gray-800">
-                                <img src={`https://img.youtube.com/vi/${videoId}/default.jpg`} className="w-full h-full object-cover opacity-80" alt="" />
-                                {/* Playing Indicator */}
-                                {!isPaused && (
-                                    <div className="absolute inset-0 flex items-end justify-center gap-0.5 pb-1">
-                                        <div className="w-0.5 bg-green-400 h-2 animate-[bounce_1s_infinite]" style={{ animationDelay: '0s' }} />
-                                        <div className="w-0.5 bg-green-400 h-3 animate-[bounce_1.2s_infinite]" style={{ animationDelay: '0.1s' }} />
-                                        <div className="w-0.5 bg-green-400 h-1.5 animate-[bounce_0.8s_infinite]" style={{ animationDelay: '0.2s' }} />
-                                    </div>
-                                )}
-                            </div>
-                            <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                <div className="text-white text-[10px] font-bold truncate leading-tight">{displayTitle}</div>
-                                <div className="text-white/60 text-[9px] truncate">{displayArtist}</div>
-                            </div>
-                        </div>
-
-                        {/* Controls */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (playerRef.current) {
-                                        if (isPaused) playerRef.current.playVideo();
-                                        else playerRef.current.pauseVideo();
-                                        setIsPaused(!isPaused);
-                                    }
-                                }}
-                                className="w-6 h-6 rounded-full bg-white flex items-center justify-center hover:bg-gray-200 transition-colors"
-                            >
-                                {isPaused ? <CustomPlayIcon size={10} fill="black" /> : (
-                                    <div className="flex gap-0.5">
-                                        <div className="w-1 h-2.5 bg-black rounded-[1px]" />
-                                        <div className="w-1 h-2.5 bg-black rounded-[1px]" />
-                                    </div>
-                                )}
-                            </button>
-
-                            {/* Progress */}
-                            <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-                                <div className="h-full bg-green-400" style={{ width: `${progress}%` }} />
-                            </div>
-
-                            <div className="text-[8px] text-white/50 font-mono tabular-nums">
-                                {formatTime(Math.max(0, duration - currentTime))}
-                            </div>
-                        </div>
-
-                        {/* Resume Text */}
-                        <button
-                            onClick={onResume}
-                            className="text-[9px] text-center text-white/40 hover:text-white mt-1 transition-colors border-t border-white/5 pt-1 w-full"
-                        >
-                            Click to Expanded View
-                        </button>
-                    </div>
-                </Html>
-            )}
+            {/* REMOVED: 3D MINI PLAYER (Floating) - Now rendered in Ipod3D as 2D */}
 
             <Html
                 transform
@@ -637,6 +559,7 @@ import { usePlayer } from '../context/PlayerContext';
 export default function Ipod3D() {
     const { setHistory: setCtxHistory, setQueue: setCtxQueue, setCurrentIndex: setCtxCurrentIndex, registerPlayHandler } = usePlayer();
     const { user, isLoaded, isSignedIn } = useUser();
+    const [isFocused, setIsFocused] = useState(false);
     const [videoUrl, setVideoUrl] = useState('');
     const [history, setHistory] = useState<{ id: string; url: string; title: string; dbId?: number; fromPlaylist?: boolean; playlistId?: string; playlistTitle?: string; channel?: string }[]>([]);
     const [currentIndex, setCurrentIndex] = useState<number>(-1);
@@ -645,6 +568,12 @@ export default function Ipod3D() {
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
     const [showHome, setShowHome] = useState(false);
+
+    // --- Player Tracking State (Lifted for MiniPlayer) ---
+    const [progress, setProgress] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+    const [isPaused, setIsPaused] = useState(false);
 
     // --- History & Persistence ---
     const [dontAskAgain, setDontAskAgain] = useState(false);
@@ -887,6 +816,40 @@ export default function Ipod3D() {
             }
         }
     };
+
+    // --- Unified Progress Tracking Loop ---
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (playerRef.current && playerRef.current.getCurrentTime && playerRef.current.getDuration) {
+                const current = playerRef.current.getCurrentTime();
+                const dur = playerRef.current.getDuration();
+                if (dur > 0) {
+                    setProgress((current / dur) * 100);
+                    setDuration(dur);
+                    setCurrentTime(current);
+                    if (playerRef.current.getPlayerState) {
+                        const state = playerRef.current.getPlayerState();
+                        setIsPaused(state !== 1 && state !== 3); // 1 = playing, 3 = buffering
+                    }
+                }
+            }
+        }, 500);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Toggle Play function exposed to MiniPlayer
+    const togglePlay = () => {
+        if (playerRef.current) {
+            if (isPaused) {
+                playerRef.current.playVideo();
+                setIsPaused(false);
+            } else {
+                playerRef.current.pauseVideo();
+                setIsPaused(true);
+            }
+        }
+    };
+
 
 
     const savePreference = () => {
@@ -1213,6 +1176,24 @@ export default function Ipod3D() {
 
     return (
         <>
+            {/* MINI PLAYER (2D Overlay) */}
+            <AnimatePresence>
+                {hasStarted && showHome && currentVideoId && (
+                    <MiniPlayer
+                        key="mini-player"
+                        videoId={currentVideoId}
+                        title={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].title : ''}
+                        artist={currentIndex >= 0 && queue[currentIndex] ? (queue[currentIndex].channel || "YouTube") : ''}
+                        progress={progress}
+                        currentTime={currentTime}
+                        duration={duration}
+                        isPaused={isPaused}
+                        onTogglePlay={togglePlay}
+                        onResume={() => setShowHome(false)} // Go back to player view
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Sidebar */}
             {hasStarted && (
                 <div className="fixed top-8 left-8 z-50 flex flex-col gap-4 w-64">
@@ -1261,67 +1242,196 @@ export default function Ipod3D() {
             {/* Upcoming Sidebar - Bottom Right */}
 
 
-            {/* Input Bar - Top Right */}
+            {/* Input Bar - Top Center (Persistent) */}
             {
                 hasStarted && (
-                    <div className="fixed top-8 right-8 z-50 flex items-center bg-white/80 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/20 transition-all hover:bg-white/95">
-                        <div className="pl-3 pr-2 text-gray-500"><Link2 size={16} /></div>
-                        <input type="text" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} onKeyDown={handleKeyDown} placeholder="Paste YouTube URL..." className="w-64 bg-transparent border-none outline-none text-sm text-gray-800 placeholder-gray-400 font-medium" />
-                        <button onClick={handleConfirm} className="flex items-center justify-center w-8 h-8 bg-black text-white rounded-full hover:bg-gray-800 transition-colors ml-1 shadow-sm"><CustomPlayIcon size={12} fill="white" /></button>
-                    </div>
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleConfirm();
+                        }}
+                        className="fixed top-8 right-8 w-[360px] px-4 z-50 animate-in slide-in-from-top-4 fade-in duration-700"
+                    >
+                        <div
+                            className={`
+                            relative backdrop-blur-xl bg-white/70 rounded-2xl 
+                            border border-white/50 shadow-lg
+                            transition-all duration-300 ease-out
+                            ${isFocused ? "shadow-xl shadow-stone-300/50 bg-white/90 scale-[1.02]" : ""}
+                        `}
+                        >
+                            {/* Subtle inner glow */}
+                            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
+
+                            <div className="relative flex items-center">
+                                {/* Minimal link icon */}
+                                <div className="pl-5 pr-2">
+                                    <svg
+                                        className={`w-4 h-4 transition-colors duration-200 ${isFocused ? "text-stone-600" : "text-stone-400"}`}
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth={2}
+                                        stroke="currentColor"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                        />
+                                    </svg>
+                                </div>
+
+                                <input
+                                    type="url"
+                                    placeholder="Paste a YouTube link"
+                                    value={videoUrl}
+                                    onChange={(e) => setVideoUrl(e.target.value)}
+                                    onFocus={() => setIsFocused(true)}
+                                    onBlur={() => setIsFocused(false)}
+                                    className="
+                                flex-1 bg-transparent py-4 pr-4 
+                                text-stone-800 text-[15px] font-light tracking-wide
+                                placeholder:text-stone-400 placeholder:font-light
+                                focus:outline-none
+                            "
+                                />
+
+                                {/* Animated submit button */}
+                                <div className="pr-2">
+                                    <button
+                                        type="submit"
+                                        className={`
+                                relative w-10 h-10 rounded-xl 
+                                bg-gradient-to-b from-stone-700 to-stone-900
+                                shadow-md hover:shadow-lg
+                                transition-all duration-200 ease-out
+                                hover:scale-105 active:scale-95
+                                flex items-center justify-center
+                                ${videoUrl.trim() ? "opacity-100" : "opacity-40"}
+                                `}
+                                        disabled={!videoUrl.trim()}
+                                    >
+                                        {/* Button shine */}
+                                        <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/20 to-transparent" />
+                                        <Play className="w-4 h-4 text-white fill-white relative z-10 ml-0.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
                 )
             }
-
             {/* Initial Center Input Screen */}
             {
                 !hasStarted && (
-                    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center font-sans backdrop-blur-[8px] bg-black/40 transition-all duration-1000">
-                        <div className="flex flex-col items-center gap-8 animate-in compile-in zoom-in-95 duration-700 fade-in slide-in-from-bottom-8">
-                            <div className="space-y-2 text-center">
-                                <h2 className="text-white text-3xl font-light tracking-tight">Paste a YouTube URL</h2>
-                                <p className="text-white/60 text-sm font-light">to start watching immediately</p>
-                            </div>
+                    <div className="fixed inset-0 z-[9999] bg-stone-100 flex flex-col items-center justify-center p-4 relative font-sans transition-all duration-1000">
+                        {/* URL Input - Top Center */}
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                handleConfirm();
+                            }}
+                            className="absolute top-8 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 animate-in slide-in-from-top-4 fade-in duration-700"
+                        >
+                            <div
+                                className={`
+                                relative backdrop-blur-xl bg-white/70 rounded-2xl 
+                                border border-white/50 shadow-lg
+                                transition-all duration-300 ease-out
+                                ${isFocused ? "shadow-xl shadow-stone-300/50 bg-white/90 scale-[1.02]" : ""}
+                            `}
+                            >
+                                {/* Subtle inner glow */}
+                                <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
 
-                            <div className="bg-white/10 backdrop-blur-md pl-4 pr-1.5 py-1.5 rounded-2xl border border-white/10 flex items-center w-[420px] shadow-2xl transition-all focus-within:bg-white/15 focus-within:border-white/30 hover:bg-white/15 group">
-                                <div className="mr-3 text-white/40 group-focus-within:text-white/80 transition-colors">
-                                    <Link2 size={18} />
+                                <div className="relative flex items-center">
+                                    {/* Minimal link icon */}
+                                    <div className="pl-5 pr-2">
+                                        <svg
+                                            className={`w-4 h-4 transition-colors duration-200 ${isFocused ? "text-stone-600" : "text-stone-400"}`}
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            strokeWidth={2}
+                                            stroke="currentColor"
+                                        >
+                                            <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                            />
+                                        </svg>
+                                    </div>
+
+                                    <input
+                                        type="url"
+                                        placeholder="Paste a YouTube link"
+                                        value={videoUrl}
+                                        onChange={(e) => setVideoUrl(e.target.value)}
+                                        onFocus={() => setIsFocused(true)}
+                                        onBlur={() => setIsFocused(false)}
+                                        className="
+                                    flex-1 bg-transparent py-4 pr-4 
+                                    text-stone-800 text-[15px] font-light tracking-wide
+                                    placeholder:text-stone-400 placeholder:font-light
+                                    focus:outline-none
+                                "
+                                        autoFocus
+                                    />
+
+                                    {/* Animated submit button */}
+                                    <div className="pr-2">
+                                        <button
+                                            type="submit"
+                                            className={`
+                                    relative w-10 h-10 rounded-xl 
+                                    bg-gradient-to-b from-stone-700 to-stone-900
+                                    shadow-md hover:shadow-lg
+                                    transition-all duration-200 ease-out
+                                    hover:scale-105 active:scale-95
+                                    flex items-center justify-center
+                                    ${videoUrl.trim() ? "opacity-100" : "opacity-40"}
+                                    `}
+                                            disabled={!videoUrl.trim()}
+                                        >
+                                            {/* Button shine */}
+                                            <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/20 to-transparent" />
+                                            <Play className="w-4 h-4 text-white fill-white relative z-10 ml-0.5" />
+                                        </button>
+                                    </div>
                                 </div>
-                                <input
-                                    type="text"
-                                    value={videoUrl}
-                                    onChange={(e) => setVideoUrl(e.target.value)}
-                                    onKeyDown={handleKeyDown}
-                                    placeholder="youtube.com/watch?v=..."
-                                    className="flex-1 bg-transparent border-none outline-none text-base text-white placeholder-white/30 font-light focus:ring-0"
-                                    autoFocus
-                                />
-                                <button
-                                    onClick={handleConfirm}
-                                    className="flex items-center justify-center w-9 h-9 bg-white text-black rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg ml-2"
-                                >
-                                    <CustomPlayIcon size={14} fill="black" />
-                                </button>
                             </div>
 
-                            <div className="flex flex-col items-center gap-4">
+                            {/* Subtle hint text */}
+                            <p
+                                className={`
+                            text-center text-[11px] text-stone-400 mt-2 font-light tracking-wide
+                            transition-opacity duration-200
+                            ${isFocused ? "opacity-100" : "opacity-0"}
+                            `}
+                            >
+                                Press Enter or click play to start
+                            </p>
+
+                            {/* Helper Controls (Skip / Don't Ask) - Kept from original but styled subtly */}
+                            <div className="flex justify-center items-center gap-6 mt-8 opacity-60 hover:opacity-100 transition-opacity">
                                 <label className="flex items-center gap-2 cursor-pointer group">
                                     <input
                                         type="checkbox"
                                         checked={dontAskAgain}
                                         onChange={(e) => setDontAskAgain(e.target.checked)}
-                                        className="w-4 h-4 rounded border-white/30 bg-white/10 text-black focus:ring-0 focus:ring-offset-0 transition-colors cursor-pointer"
+                                        className="w-3.5 h-3.5 rounded border-stone-300 bg-white/50 text-stone-600 focus:ring-0 cursor-pointer"
                                     />
-                                    <span className="text-white/40 group-hover:text-white/80 text-xs font-light tracking-wide transition-colors user-select-none">Don't ask again</span>
+                                    <span className="text-stone-400 group-hover:text-stone-600 text-[11px] font-light transition-colors user-select-none">Don't ask again</span>
                                 </label>
 
                                 <button
                                     onClick={handleSkip}
-                                    className="text-white/30 hover:text-white text-xs font-medium tracking-wide transition-colors px-4 py-2 rounded-full hover:bg-white/5"
+                                    className="text-stone-400 hover:text-stone-600 text-[11px] uppercase tracking-widest transition-colors font-medium border-b border-transparent hover:border-stone-300"
                                 >
-                                    Skip for now
+                                    Skip
                                 </button>
                             </div>
-                        </div>
+                        </form>
                     </div>
                 )
             }
@@ -1362,6 +1472,11 @@ export default function Ipod3D() {
                                     }
                                 }}
                                 showHome={showHome}
+                                // Passed down state
+                                progress={progress}
+                                currentTime={currentTime}
+                                duration={duration}
+                                isPaused={isPaused}
                             />
                         </group>
                     </Suspense>
