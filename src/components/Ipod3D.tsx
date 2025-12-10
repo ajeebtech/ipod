@@ -403,7 +403,25 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         <span className="text-xs font-bold text-gray-800">Liked Songs</span>
                                         <span className="ml-auto text-[10px] text-gray-500 font-medium">{likedSongs.length} Songs</span>
                                     </div>
-                                    <div className="flex-1 overflow-y-auto">
+                                    <div
+                                        className="flex-1 overflow-y-auto ipod-scrollbar"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                    >
+                                        <style>{`
+                                            .ipod-scrollbar::-webkit-scrollbar {
+                                                width: 5px;
+                                            }
+                                            .ipod-scrollbar::-webkit-scrollbar-track {
+                                                background: transparent;
+                                            }
+                                            .ipod-scrollbar::-webkit-scrollbar-thumb {
+                                                background-color: #3b82f6;
+                                                border-radius: 4px;
+                                            }
+                                            .ipod-scrollbar::-webkit-scrollbar-thumb:hover {
+                                                background-color: #2563eb;
+                                            }
+                                        `}</style>
                                         {likedSongs.length === 0 ? (
                                             <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
                                                 <Heart size={32} className="mb-2 opacity-20" />
