@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { HistoryDrawer } from "@/components/HistoryDrawer";
+import { UpNextDrawer } from "@/components/UpNextDrawer";
 
 
 
@@ -8,7 +10,7 @@ export const metadata: Metadata = {
   description: "play your songs here please",
 };
 
-import { ClerkProvider } from "@clerk/nextjs";
+import { Providers } from "@/components/Providers";
 
 export default function RootLayout({
   children,
@@ -16,12 +18,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <Providers>
       <html lang="en">
         <body
           className={`antialiased`}
         >
           {children}
+          <div className="fixed bottom-8 w-full flex justify-center gap-4 z-50">
+            <HistoryDrawer />
+            <UpNextDrawer />
+          </div>
           <div className="fixed bottom-2 w-full text-center">
             <span className="text-gray-400 text-xs">
               made by{" "}
@@ -37,6 +43,6 @@ export default function RootLayout({
           </div>
         </body>
       </html>
-    </ClerkProvider>
+    </Providers>
   );
 }

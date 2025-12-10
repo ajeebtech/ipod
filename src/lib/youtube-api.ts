@@ -29,7 +29,8 @@ export async function fetchPlaylistItems(playlistId: string) {
             title: item.snippet.title,
             // Append list ID to URL for persistence
             url: `https://www.youtube.com/watch?v=${item.snippet.resourceId.videoId}&list=${playlistId}`,
-            thumbnail: item.snippet.thumbnails?.default?.url
+            thumbnail: item.snippet.thumbnails?.default?.url,
+            channel: item.snippet.videoOwnerChannelTitle || item.snippet.channelTitle
         })).filter((item: any) => item.title !== "Private video" && item.title !== "Deleted video");
 
         return { title: playlistTitle, items };

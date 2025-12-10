@@ -4,9 +4,9 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, ChevronDown, ChevronUp, Home } from 'lucide-react';
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useUser, SignInButton, UserButton, SignIn } from "@clerk/nextjs";
+import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
 import { fetchPlaylistItems } from '../lib/youtube-api';
 
@@ -244,6 +244,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                 if (dur > 0) {
                     setProgress((current / dur) * 100);
                     setDuration(dur);
+                    setCurrentTime(current);
                     if (playerRef.current.getPlayerState) {
                         const state = playerRef.current.getPlayerState();
                         setIsPaused(state !== 1 && state !== 3); // 1 = playing, 3 = buffering
@@ -355,7 +356,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
             <Html
                 transform
-                occlude="blending"
+                occlude="raycast"
                 zIndexRange={[100, 0]}
                 position={[0.015, 0.05, 0.00]}
                 rotation={[-0.10, 1.57, 0.10]}
@@ -631,7 +632,10 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
 
 
-export function Ipod3D() {
+import { usePlayer } from '../context/PlayerContext';
+
+export default function Ipod3D() {
+    const { setHistory: setCtxHistory, setQueue: setCtxQueue, setCurrentIndex: setCtxCurrentIndex, registerPlayHandler } = usePlayer();
     const { user, isLoaded, isSignedIn } = useUser();
     const [videoUrl, setVideoUrl] = useState('');
     const [history, setHistory] = useState<{ id: string; url: string; title: string; dbId?: number; fromPlaylist?: boolean; playlistId?: string; playlistTitle?: string; channel?: string }[]>([]);
@@ -639,6 +643,7 @@ export function Ipod3D() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [hasStarted, setHasStarted] = useState(true);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
     const [showHome, setShowHome] = useState(false);
 
     // --- History & Persistence ---
@@ -647,6 +652,19 @@ export function Ipod3D() {
     const [isLiked, setIsLiked] = useState(false);
     const [queue, setQueue] = useState<any[]>([]);
     const [likedSongs, setLikedSongs] = useState<any[]>([]);
+
+    // Sync to Context
+    useEffect(() => {
+        setCtxHistory(history);
+    }, [history, setCtxHistory]);
+
+    useEffect(() => {
+        setCtxQueue(queue);
+    }, [queue, setCtxQueue]);
+
+    useEffect(() => {
+        setCtxCurrentIndex(currentIndex);
+    }, [currentIndex, setCtxCurrentIndex]);
 
     // Artificial delay resource to ensure loading screen is visible for at least 3 seconds
     const [delayResource] = useState(() => createDelayResource(3000));
@@ -663,17 +681,7 @@ export function Ipod3D() {
         }
     }, []);
 
-    // Auto-scroll logic for history
-    const historyContainerRef = useRef<HTMLDivElement>(null);
-    useEffect(() => {
-        if (historyContainerRef.current) {
-            // Find the active element purely by DOM attribute, ignoring index complexity (groups/reverse)
-            const activeItem = historyContainerRef.current.querySelector('[data-active="true"]');
-            if (activeItem) {
-                activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-        }
-    }, [currentIndex, history]);
+
 
     useEffect(() => {
         if (isSignedIn && user) {
@@ -695,7 +703,6 @@ export function Ipod3D() {
                             playlistId = listMatch ? listMatch[1] : undefined;
                         }
 
-                        // Default title if still missing (but we have an ID)
                         if (playlistId && !playlistTitle) {
                             playlistTitle = 'Playlist';
                         }
@@ -704,17 +711,24 @@ export function Ipod3D() {
                             id: item.video_id,
                             url: item.url,
                             title: item.title,
+                            channel: item.channel,
                             dbId: item.id,
                             fromPlaylist: !!playlistId,
                             playlistId: playlistId,
                             playlistTitle: playlistTitle
                         };
                     });
-                    if (mappedHistory.length > 0) {
-                        setHistory(mappedHistory);
-                        // Default to history queue on load if empty, or sync logic
-                        setQueue((prev) => prev.length === 0 ? mappedHistory : prev);
 
+                    if (mappedHistory.length > 0) {
+                        // Reverse to show latest first for History UI (if DB returns ascending)
+                        // Wait, my previous replacement trialed 'order created_at desc'.
+                        // The current code at line 692 says 'ascending: true'.
+                        // If I want latest first in array for UI which reverses it, then ascending is correct (oldest first).
+                        // But HistoryDrawer reverses it.
+                        // Let's stick to: DB returns oldest -> newest. HistoryDrawer reverses -> newest -> oldest.
+
+                        setHistory(mappedHistory);
+                        setQueue((prev) => prev.length === 0 ? mappedHistory : prev);
                         setHasStarted(true);
                         setCurrentIndex((prev) => prev === -1 ? mappedHistory.length - 1 : prev);
                     }
@@ -769,7 +783,47 @@ export function Ipod3D() {
     };
 
     const handleStateChange = async (event: any) => {
-        if (event.data === 1) setIsPlaying(true);
+        if (event.data === 1) {
+            setIsPlaying(true);
+            // When playing, try to fetch channel name if missing
+            if (playerRef.current) {
+                const data = playerRef.current.getVideoData();
+                if (data && data.author && currentIndex >= 0 && queue[currentIndex]) {
+                    const currentItem = queue[currentIndex];
+                    // If channel is missing or different, update it
+                    if (!currentItem.channel) {
+                        const author = data.author;
+
+                        // Update local state
+                        setQueue(prev => {
+                            const newQueue = [...prev];
+                            // Must check index again in case it changed
+                            if (newQueue[currentIndex]) {
+                                newQueue[currentIndex] = { ...newQueue[currentIndex], channel: author };
+                            }
+                            return newQueue;
+                        });
+                        setHistory(prev => {
+                            const newHistory = [...prev];
+                            const idx = newHistory.findIndex(h => h.id === currentItem.id);
+                            if (idx !== -1) {
+                                newHistory[idx] = { ...newHistory[idx], channel: author };
+                            }
+                            return newHistory;
+                        });
+
+                        // Update DB if user is signed in
+                        if (isSignedIn && user) {
+                            await supabase
+                                .from('history')
+                                .update({ channel: author })
+                                .eq('user_id', user.id)
+                                .eq('video_id', currentItem.id);
+                        }
+                    }
+                }
+            }
+        }
         if (event.data === 2) setIsPlaying(false);
         if (event.data === 0) {
             setIsPlaying(false);
@@ -872,6 +926,7 @@ export function Ipod3D() {
                         video_id: item.id,
                         url: item.url,
                         title: item.title,
+                        channel: item.channel,
                         playlist_id: playlistId,
                         playlist_title: playlistItems.title
                     }));
@@ -888,6 +943,7 @@ export function Ipod3D() {
                             id: item.id,
                             url: item.url,
                             title: item.title,
+                            channel: item.channel,
                             dbId: dbItem?.id,
                             fromPlaylist: true,
                             playlistId: playlistId,
@@ -995,72 +1051,36 @@ export function Ipod3D() {
     };
 
     const playHistoryItem = async (index: number) => {
-        // Playing from the Sidebar (History)
+        // Ensure this logic handles everything correctly
+        // We'll wrap this or similar logic in the handler
 
-        // 1. Ensure we are in History Mode (Queue = History)
-        // Note: index passed here is likely based on 'history' array rendering
-        // So we must be careful if queue != history.
-
-        // Let's reset queue to history.
-        // BUT wait, playHistoryItem does re-ordering (bumping to top).
-
-        const selectedItem = history[index];
-        if (!selectedItem) return;
-
-        // Bump to top (end of array)
-        setHistory(prev => {
-            let itemsToMove: typeof prev = [];
-            let remainingItems: typeof prev = [];
-
-            if (selectedItem.fromPlaylist && selectedItem.playlistId) {
-                // Move entire playlist group
-                itemsToMove = prev.filter(item => item.playlistId === selectedItem.playlistId);
-                remainingItems = prev.filter(item => item.playlistId !== selectedItem.playlistId);
-            } else {
-                // Move single item
-                itemsToMove = [selectedItem];
-                remainingItems = prev.filter(item => item.id !== selectedItem.id);
+        // RE-IMPLEMENTATION TO ENSURE FULL CONTEXT PLAYBACK
+        if (playingSource !== 'History') {
+            setPlayingSource('History');
+            // If we switch to history, we must ensure queue covers history
+            if (queue !== history) {
+                setQueue(history);
             }
-
-            // New history: [Old items ..., Moved Items]
-            // Since we display REVERSED, Moved Items will appear at TOP.
-            const newHistory = [...remainingItems, ...itemsToMove];
-
-            // Set Queue to this new reordered history
-            setQueue(newHistory);
-
-            // Recalculate index relative to the new list
-            // We want to play the *first* item of the moved group (or the single item)
-            // which is now at: length - itemsToMove.length
-            const newIndex = remainingItems.length; // Start of the appended group
-
-            setCurrentIndex(newIndex);
-            setHasStarted(true);
-
-            return newHistory;
-        });
-
-        // Update DB timestamp to persist order
-        if (isSignedIn && user) {
-            const timestamp = new Date().toISOString();
-            if (selectedItem.fromPlaylist && selectedItem.playlistId) {
-                await supabase.from('history')
-                    .update({ created_at: timestamp })
-                    .eq('user_id', user.id)
-                    .eq('playlist_id', selectedItem.playlistId);
-            } else if (selectedItem.dbId) {
-                await supabase.from('history')
-                    .update({ created_at: timestamp })
-                    .eq('id', selectedItem.dbId);
-            }
-        } else {
-            // If not persistent, just start
-            setHasStarted(true);
-            setCurrentIndex(index); // Fallback if bump fails (unlikely)
         }
-        setPlayingSource('History');
+        setCurrentIndex(index);
+        // Auto-play is handled by currentIndex effect usually
         setShowHome(false);
     };
+
+    // Register Context Handler
+    useEffect(() => {
+        registerPlayHandler((type, index) => {
+            if (type === 'history') {
+                playHistoryItem(index);
+            } else if (type === 'queue') {
+                // If it's pure queue (Up Next)
+                // Ensure we are in the right mode if needed, or just set index if queue is already active
+                // For now, assuming Up Next is just future items of current queue
+                setCurrentIndex(index);
+            }
+        });
+    }, [registerPlayHandler, history, queue, playingSource]); // Add dependencies as needed
+
 
     const handlePlayFromLiked = async (song: any) => {
         // Set context to Liked Songs
@@ -1185,6 +1205,7 @@ export function Ipod3D() {
                 video_id: currentItem.id,
                 title: currentItem.title,
                 url: currentItem.url,
+                channel: currentItem.channel || currentItem.author || "",
                 duration: Math.floor(duration)
             }, { onConflict: 'user_id, video_id' });
         }
@@ -1233,142 +1254,12 @@ export function Ipod3D() {
                         /* For now, let's keep Sidebar showing HISTORY (the persistent record). */
                         /* BUT Up Next should show QUEUE coming up. */
                     }
-                    {(history.length > 0 || !isSignedIn) && (
-                        <div className="bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-white/20 overflow-hidden transition-all">
-                            <button
-                                onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                                className="w-full flex justify-between items-center mb-2 px-2 group"
-                            >
-                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider group-hover:text-gray-700 transition-colors">History</h3>
-                                {isHistoryOpen ? <ChevronUp size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" /> : <ChevronDown size={14} className="text-gray-400 group-hover:text-gray-600 transition-colors" />}
-                            </button>
 
-                            <AnimatePresence>
-                                {isHistoryOpen && (
-                                    <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: 'auto', opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2, ease: "easeInOut" }}
-                                        className="overflow-hidden"
-                                    >
-                                        <div className="max-h-[300px] overflow-y-auto">
-                                            {!isSignedIn ? (
-                                                <div className="flex flex-col gap-3 p-2">
-                                                    <p className="text-xs text-gray-600 leading-relaxed font-medium">
-                                                        To save your videos into history, please sign in.
-                                                    </p>
-                                                    <SignInButton mode="modal">
-                                                        <button className="w-full text-xs bg-black text-white px-3 py-2 rounded-lg font-medium hover:bg-gray-800 transition-colors shadow-sm">
-                                                            Sign In
-                                                        </button>
-                                                    </SignInButton>
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col gap-1 pb-1" ref={historyContainerRef}>
-                                                    {/* NOTE: Sidebar still shows HISTORY (all played), even if Queue is different. 
-                                                        If user clicks here, it switches queue back to history in playHistoryItem. */
-                                                        (() => {
-                                                            const visibleHistory = history;
-                                                            const renderedGroups: React.ReactNode[] = [];
-                                                            let i = 0;
-                                                            while (i < visibleHistory.length) {
-                                                                const item = visibleHistory[i];
-
-                                                                if (item.fromPlaylist && item.playlistId) {
-                                                                    // Start of a playlist group?
-                                                                    // Check consecutive items with same playlistId
-                                                                    const groupStartIndex = i;
-                                                                    let groupEndIndex = i;
-                                                                    while (
-                                                                        groupEndIndex + 1 < visibleHistory.length &&
-                                                                        visibleHistory[groupEndIndex + 1].playlistId === item.playlistId
-                                                                    ) {
-                                                                        groupEndIndex++;
-                                                                    }
-
-                                                                    // Render visual group item
-                                                                    const isActive = currentIndex >= groupStartIndex && currentIndex <= groupEndIndex;
-                                                                    const groupTitle = item.playlistTitle || 'Playlist';
-
-                                                                    renderedGroups.push(
-                                                                        <motion.button
-                                                                            layout
-                                                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                                                            key={`group-${item.playlistId}`} // Stable key
-                                                                            data-active={isActive}
-                                                                            onClick={() => playHistoryItem(groupStartIndex)}
-                                                                            className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
-                                                                        >
-                                                                            <CustomPlaylistIcon size={12} className="shrink-0 opacity-50" />
-                                                                            <span className="truncate">{groupTitle}</span>
-                                                                        </motion.button>
-                                                                    );
-
-                                                                    // Skip processed items
-                                                                    i = groupEndIndex + 1;
-                                                                } else {
-                                                                    // Single item
-                                                                    const itemIndex = i;
-                                                                    const isActive = itemIndex === currentIndex;
-                                                                    renderedGroups.push(
-                                                                        <motion.button
-                                                                            layout
-                                                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                                                            key={`item-${item.id}`} // Stable key
-                                                                            data-active={isActive}
-                                                                            onClick={() => playHistoryItem(itemIndex)}
-                                                                            className={`flex items-center gap-2 text-left text-xs p-2 rounded-lg truncate transition-all w-full ${isActive ? 'bg-black/5 text-black font-semibold' : 'text-gray-600 hover:bg-white hover:shadow-sm'}`}
-                                                                        >
-                                                                            <Film size={12} className="shrink-0 opacity-50" />
-                                                                            <span className="truncate">{item.title}</span>
-                                                                        </motion.button>
-                                                                    );
-                                                                    i++;
-                                                                }
-                                                            }
-                                                            return renderedGroups.reverse();
-                                                        })()}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                    )}
                 </div>
             )}
 
             {/* Upcoming Sidebar - Bottom Right */}
-            {hasStarted && (
-                <div className="fixed bottom-8 right-8 z-50 flex flex-col gap-4 w-64 items-end pointer-events-none">
-                    <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20 pointer-events-auto max-h-[300px] overflow-hidden flex flex-col w-full">
-                        <h3 className="text-xs font-bold text-gray-500 mb-3 px-1 uppercase tracking-wider text-left">Up Next</h3>
-                        <div className="flex flex-col gap-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-                            {/* Show from QUEUE now, not history, unless queue IS history */}
-                            {queue.slice(currentIndex + 1).length === 0 && (
-                                <div className="text-left text-xs text-gray-400 italic py-2">No upcoming videos</div>
-                            )}
-                            {queue
-                                .slice(currentIndex + 1)
-                                .map((item, idx) => ({ item, originalIndex: currentIndex + 1 + idx }))
-                                // .filter filter removed, show all in queue
-                                .map(({ item, originalIndex }, idx) => (
-                                    <button
-                                        key={`upcoming-${item.id}-${idx}`}
-                                        // Handle playing from Up Next? 
-                                        // If it's queue, just jump index.
-                                        onClick={() => setCurrentIndex(originalIndex)}
-                                        className="w-full text-left text-sm font-medium p-2 rounded-lg transition-all text-gray-600 hover:bg-black/5 hover:text-black break-words"
-                                    >
-                                        {item.title}
-                                    </button>
-                                ))}
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             {/* Input Bar - Top Right */}
             {
@@ -1437,7 +1328,7 @@ export function Ipod3D() {
 
 
             <div className="w-[370px] h-[600px]">
-                <Canvas camera={{ position: [0, 0, 15], fov: 20 }}>
+                <Canvas camera={{ position: [0, 1.4, 15], fov: 20 }}>
                     <ambientLight intensity={0.5} />
                     <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
                     <pointLight position={[-10, -10, -10]} intensity={1} />
@@ -1449,6 +1340,7 @@ export function Ipod3D() {
                             <ScreenOverlay
                                 videoId={currentVideoId}
                                 title={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].title : undefined}
+                                channelName={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].channel : undefined}
                                 index={currentIndex + 1}
                                 total={queue.length}
                                 onPlayerReady={handlePlayerReady}
@@ -1461,7 +1353,6 @@ export function Ipod3D() {
                                 onPlay={handlePlayFromLiked}
                                 onUnlike={handleUnlikeFromList}
                                 onGoHome={handleGoHome}
-                                channelName={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].channel : undefined}
                                 lastPlayed={history.length > 0 ? history[history.length - 1] : undefined}
                                 onResume={() => {
                                     if (currentVideoId && showHome) {

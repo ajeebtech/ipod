@@ -1,4 +1,4 @@
-import { Ipod3D } from "@/components/Ipod3D";
+import Ipod3D from "@/components/Ipod3D";
 
 export default function Home() {
   return (
