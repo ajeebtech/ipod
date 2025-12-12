@@ -4,12 +4,13 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown, X } from 'lucide-react';
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown, X, ListMusic } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
 import { fetchPlaylistItems } from '../lib/youtube-api';
 import MiniPlayer from './MiniPlayer';
+import AddToPlaylistModal from './AddToPlaylistModal';
 
 // --- Icons ---
 
@@ -204,11 +205,17 @@ interface ScreenOverlayProps {
     duration: number;
     isPaused: boolean;
     onLoad: () => void;
+    onAddToPlaylist: () => void;
+    // Playlist Props
+    playlists: any[];
+    activePlaylistItems: any[];
+    onOpenPlaylist: (id: number) => void;
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist }: ScreenOverlayProps) {
     // Removed internal tracking state
-    const [view, setView] = useState<'home' | 'liked_songs'>('home');
+    const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
+    const [viewTitle, setViewTitle] = useState(''); // For playlist header
     const playerRef = useRef<YouTubePlayer | null>(null);
 
     // --- Format Helper ---
@@ -318,7 +325,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                     )}
 
                     {showMenu ? (
-                        // --- MENU VIEW (Home / Liked Songs) ---
+                        // --- MENU VIEW (Home / Liked Songs / Playlist) ---
                         <div className="w-full h-full flex font-sans relative z-10">
                             {view === 'home' ? (
                                 <div className="w-full h-full flex font-sans">
@@ -327,7 +334,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-center shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
                                             <span className="text-[12px] font-bold text-white drop-shadow-sm">iPod</span>
                                         </div>
-                                        <div className="flex-1 flex flex-col py-2">
+                                        <div className="flex-1 flex flex-col py-2 overflow-y-auto ipod-scrollbar">
                                             <div className="px-2 mb-2">
                                                 <p className="text-[11px] font-semibold text-black leading-tight text-center">
                                                     What do you want to listen to?
@@ -336,11 +343,39 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
                                             <button
                                                 onClick={() => setView('liked_songs')}
-                                                className="w-full bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold"
+                                                className="w-full bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold mb-1"
                                             >
                                                 <span>Liked Songs</span>
                                                 <span className="text-[10px]">›</span>
                                             </button>
+
+                                            {/* Playlists or Sign In Prompt */}
+                                            {user ? (
+                                                playlists && playlists.length > 0 && (
+                                                    <div className="mt-0">
+                                                        {playlists.map(pl => (
+                                                            <button
+                                                                key={pl.id}
+                                                                onClick={async () => {
+                                                                    await onOpenPlaylist(pl.id);
+                                                                    setViewTitle(pl.name);
+                                                                    setView('playlist');
+                                                                }}
+                                                                className="w-full bg-white hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] text-black hover:text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold mb-1 group transition-all"
+                                                            >
+                                                                <span className="truncate">{pl.name}</span>
+                                                                <span className="text-gray-400 group-hover:text-white text-[10px]">›</span>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )
+                                            ) : (
+                                                <div className="mt-2 px-3 text-center">
+                                                    <p className="text-[10px] text-gray-500 font-medium leading-tight">
+                                                        Sign in to save playlists but you can play videos without signing in!
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -393,7 +428,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
+                            ) : view === 'liked_songs' ? (
                                 <div className="w-full h-full flex flex-col bg-white">
                                     <div className="h-8 bg-gradient-to-b from-[#f8f8f8] to-[#e0e0e0] flex items-center px-2 border-b border-[#c0c0c0] shadow-sm shrink-0">
                                         <button
@@ -448,6 +483,52 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                                         >
                                                             {/* Ideally pass specific song ID to toggle like, but for now just visual or playing */}
                                                             <Heart size={14} className="fill-red-500 text-red-500 group-hover/heart:text-red-600" />
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                // --- PLAYLIST VIEW ---
+                                <div className="w-full h-full flex flex-col bg-white">
+                                    <div className="h-8 bg-gradient-to-b from-[#f8f8f8] to-[#e0e0e0] flex items-center px-2 border-b border-[#c0c0c0] shadow-sm shrink-0">
+                                        <button
+                                            onClick={() => setView('home')}
+                                            className="mr-2 p-1 hover:bg-black/5 rounded-full"
+                                        >
+                                            <ChevronDown size={16} className="rotate-90 text-gray-600" />
+                                        </button>
+                                        <span className="text-xs font-bold text-gray-800 truncate max-w-[120px]">{viewTitle}</span>
+                                        <span className="ml-auto text-[10px] text-gray-500 font-medium">{activePlaylistItems.length} Songs</span>
+                                    </div>
+                                    <div
+                                        className="flex-1 overflow-y-auto ipod-scrollbar"
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                    >
+                                        {activePlaylistItems.length === 0 ? (
+                                            <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
+                                                <CustomPlaylistIcon size={32} className="mb-2 opacity-20" />
+                                                <p className="text-xs">No songs yet</p>
+                                            </div>
+                                        ) : (
+                                            <ul className="divide-y divide-gray-100">
+                                                {activePlaylistItems.map((item) => (
+                                                    <li key={item.id} className="flex items-center gap-2 p-2 hover:bg-blue-50 transition-colors group">
+                                                        <button
+                                                            onClick={async () => {
+                                                                onPlay({
+                                                                    ...item,
+                                                                    id: item.video_id
+                                                                });
+                                                            }}
+                                                            className="flex-1 flex flex-col text-left min-w-0"
+                                                        >
+                                                            <span className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.title}</span>
+                                                            <span className="text-[9px] text-gray-500">
+                                                                {item.duration ? formatTime(item.duration) : '--:--'}
+                                                            </span>
                                                         </button>
                                                     </li>
                                                 ))}
@@ -534,6 +615,13 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         </div>
                                         <div className="flex gap-1 pointer-events-auto items-center">
                                             <button
+                                                onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); }}
+                                                className="p-1.5 hover:scale-110 active:scale-95 transition-transform group"
+                                                title="Add to Playlist"
+                                            >
+                                                <ListMusic size={18} className="text-[#888] group-hover:text-[#666]" />
+                                            </button>
+                                            <button
                                                 onClick={(e) => { e.stopPropagation(); onToggleLike(); }}
                                                 className="p-1.5 hover:scale-110 active:scale-95 transition-transform group"
                                                 title={isLiked ? "Remove from Liked" : "Add to Liked"}
@@ -566,8 +654,8 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                             </div>
                         </div>
                     )}
-                </div>
-            </Html>
+                </div >
+            </Html >
         </>
     );
 }
@@ -602,10 +690,15 @@ export default function Ipod3D() {
     const [isLiked, setIsLiked] = useState(false);
     const [queue, setQueue] = useState<any[]>([]);
     const [likedSongs, setLikedSongs] = useState<any[]>([]);
+    const [playlists, setPlaylists] = useState<any[]>([]);
+    const [activePlaylistItems, setActivePlaylistItems] = useState<any[]>([]);
 
     // OS Detection for Zoom Hint
     const [zoomKey, setZoomKey] = useState('Cmd');
     const [showZoomAlert, setShowZoomAlert] = useState(false); // Initially false, wait for load
+
+    // Playlist Modal State
+    const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
 
     useEffect(() => {
         if (typeof navigator !== 'undefined') {
@@ -743,9 +836,31 @@ export default function Ipod3D() {
                     .order('created_at', { ascending: false });
                 if (data) setLikedSongs(data);
             };
+            const fetchPlaylists = async () => {
+                const { data } = await supabase
+                    .from('playlists')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false });
+                if (data) setPlaylists(data);
+            };
             fetchLikedSongs();
+            fetchPlaylists();
         }
-    }, [isSignedIn, user, isLiked]); // Refetch when isLiked changes (to sync list)
+    }, [isSignedIn, user, isLiked, isPlaylistModalOpen]); // Sync when modal closes (created new playlist) or liked status changes
+
+    const handleOpenPlaylist = async (playlistId: number) => {
+        if (!user) return;
+        const { data } = await supabase
+            .from('playlist_items')
+            .select('*')
+            .eq('playlist_id', playlistId)
+            .order('added_at', { ascending: false });
+
+        if (data) {
+            setActivePlaylistItems(data);
+        }
+    };
 
     const handlePlayerReady = (player: YouTubePlayer) => {
         playerRef.current = player;
@@ -818,7 +933,7 @@ export default function Ipod3D() {
         }
 
         const player = event.target;
-        if (player && player.getVideoData && isSignedIn && user && currentIndex >= 0) {
+        if (player && player.getVideoData && currentIndex >= 0) {
             const data = player.getVideoData();
             const currentItem = queue[currentIndex];
 
@@ -838,23 +953,23 @@ export default function Ipod3D() {
                         return newQueue;
                     });
 
-                    // ALSO Update History if it's the same item (synced)
-                    // This is a bit tricky if they are desynced. 
-                    // We'll rely on DB ID if present.
-
-                    if (currentItem.dbId) {
+                    // Update DB if item has dbId (meaning user is signed in and it's saved)
+                    if (currentItem.dbId && isSignedIn && user) {
                         await supabase
                             .from('history')
-                            .update({ title: data.title })
+                            .update({ title: data.title, channel: data.author })
                             .eq('id', currentItem.dbId);
+                    }
 
-                        // Optimistically update history state too for UI consistency
-                        setHistory(prev => prev.map(h => h.dbId === currentItem.dbId ? {
+                    // Update Local History State
+                    setHistory(prev => prev.map(h => {
+                        const isMatch = currentItem.dbId ? h.dbId === currentItem.dbId : h.id === currentItem.id;
+                        return isMatch ? {
                             ...h,
                             title: data.title || h.title,
                             channel: data.author || h.channel
-                        } : h));
-                    }
+                        } : h;
+                    }));
                 }
             }
         }
@@ -1506,6 +1621,12 @@ export default function Ipod3D() {
                                 onPlay={handlePlayFromLiked}
                                 onUnlike={handleUnlikeFromList}
                                 onGoHome={handleGoHome}
+
+                                // Playlist Props
+                                playlists={playlists}
+                                activePlaylistItems={activePlaylistItems}
+                                onOpenPlaylist={handleOpenPlaylist}
+
                                 lastPlayed={history.length > 0 ? history[history.length - 1] : undefined}
                                 onResume={() => {
                                     if (currentVideoId && showHome) {
@@ -1521,6 +1642,13 @@ export default function Ipod3D() {
                                 duration={duration}
                                 isPaused={isPaused}
                                 onLoad={() => setIsModelLoaded(true)}
+                                onAddToPlaylist={() => {
+                                    if (!user) {
+                                        alert("Please sign in to add songs to playlists.");
+                                        return;
+                                    }
+                                    setIsPlaylistModalOpen(true);
+                                }}
                             />
                         </group>
                     </Suspense>
@@ -1557,7 +1685,7 @@ export default function Ipod3D() {
                             </button>
                         </div>
                         {/* Arrow pointing down */}
-                        <div className="pl-6 text-stone-300 drop-shadow-sm">
+                        <div className="pl-6 text-stone-500 drop-shadow-sm">
                             <svg width="12" height="40" viewBox="0 0 12 40" fill="none">
                                 <path d="M6 0.5V39.5M6 39.5L1 34.5M6 39.5L11 34.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
@@ -1565,6 +1693,18 @@ export default function Ipod3D() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <AddToPlaylistModal
+                isOpen={isPlaylistModalOpen}
+                onClose={() => setIsPlaylistModalOpen(false)}
+                video={currentIndex >= 0 && queue[currentIndex] ? {
+                    id: queue[currentIndex].id,
+                    title: queue[currentIndex].title,
+                    channel: queue[currentIndex].channel,
+                    url: queue[currentIndex].url,
+                    duration: duration,
+                } : null}
+            />
         </>
     );
 }
