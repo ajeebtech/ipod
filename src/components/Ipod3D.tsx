@@ -1642,13 +1642,7 @@ export default function Ipod3D() {
                                 duration={duration}
                                 isPaused={isPaused}
                                 onLoad={() => setIsModelLoaded(true)}
-                                onAddToPlaylist={() => {
-                                    if (!user) {
-                                        alert("Please sign in to add songs to playlists.");
-                                        return;
-                                    }
-                                    setIsPlaylistModalOpen(true);
-                                }}
+                                onAddToPlaylist={() => setIsPlaylistModalOpen(true)}
                             />
                         </group>
                     </Suspense>
