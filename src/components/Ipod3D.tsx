@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown } from 'lucide-react';
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
@@ -203,9 +203,10 @@ interface ScreenOverlayProps {
     currentTime: number;
     duration: number;
     isPaused: boolean;
+    onLoad: () => void;
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad }: ScreenOverlayProps) {
     // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs'>('home');
     const playerRef = useRef<YouTubePlayer | null>(null);
@@ -244,8 +245,9 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
     // REMOVED: Internal useEffect interval for progress (lifted to Ipod3D)
 
 
-    // --- Spacebar Key Handler ---
+    // --- Spacebar Key Handler & Load Signal ---
     useEffect(() => {
+        onLoad();
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
                 e.preventDefault(); // Prevent scrolling
@@ -584,6 +586,7 @@ export default function Ipod3D() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [hasStarted, setHasStarted] = useState(true);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [isModelLoaded, setIsModelLoaded] = useState(false);
 
     const [showHome, setShowHome] = useState(false);
 
@@ -599,6 +602,28 @@ export default function Ipod3D() {
     const [isLiked, setIsLiked] = useState(false);
     const [queue, setQueue] = useState<any[]>([]);
     const [likedSongs, setLikedSongs] = useState<any[]>([]);
+
+    // OS Detection for Zoom Hint
+    const [zoomKey, setZoomKey] = useState('Cmd');
+    const [showZoomAlert, setShowZoomAlert] = useState(false); // Initially false, wait for load
+
+    useEffect(() => {
+        if (typeof navigator !== 'undefined') {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            setZoomKey(isMac ? 'Cmd' : 'Ctrl');
+        }
+    }, []);
+
+    // Zoom Alert Timer - Starts only after Model Load
+    useEffect(() => {
+        if (isModelLoaded) {
+            setShowZoomAlert(true);
+            const timer = setTimeout(() => {
+                setShowZoomAlert(false);
+            }, 10000);
+            return () => clearTimeout(timer);
+        }
+    }, [isModelLoaded]);
 
     // Sync to Context
     useEffect(() => {
@@ -1495,6 +1520,7 @@ export default function Ipod3D() {
                                 currentTime={currentTime}
                                 duration={duration}
                                 isPaused={isPaused}
+                                onLoad={() => setIsModelLoaded(true)}
                             />
                         </group>
                     </Suspense>
@@ -1504,6 +1530,41 @@ export default function Ipod3D() {
                     <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
                 </Canvas>
             </div>
+            {/* Zoom Instruction Hint */}
+            <div className="fixed bottom-20 left-8 text-[10px] font-medium text-stone-500 opacity-60 pointer-events-none select-none z-0">
+                if you can't see the screen, try {zoomKey} + or {zoomKey} -
+            </div>
+
+            {/* Zoom Alert Popup */}
+            <AnimatePresence>
+                {showZoomAlert && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        transition={{ duration: 0.5 }}
+                        className="fixed bottom-28 left-8 z-50 pointer-events-auto flex flex-col items-start"
+                    >
+                        <div className="relative bg-white/70 backdrop-blur-2xl pl-3.5 pr-1.5 py-1.5 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/80 mb-1.5 flex items-center gap-3 transform transition-all hover:scale-105">
+                            <div className="text-[11px] font-semibold text-gray-800 tracking-tight">
+                                Can't see the screen?
+                            </div>
+                            <button
+                                onClick={() => setShowZoomAlert(false)}
+                                className="w-5 h-5 flex items-center justify-center bg-black/5 hover:bg-black/10 rounded-full transition-colors text-gray-500"
+                            >
+                                <X size={10} strokeWidth={3} />
+                            </button>
+                        </div>
+                        {/* Arrow pointing down */}
+                        <div className="pl-6 text-stone-300 drop-shadow-sm">
+                            <svg width="12" height="40" viewBox="0 0 12 40" fill="none">
+                                <path d="M6 0.5V39.5M6 39.5L1 34.5M6 39.5L11 34.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }
