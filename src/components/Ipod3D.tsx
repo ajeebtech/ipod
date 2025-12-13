@@ -4,7 +4,8 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown, X, ListMusic, Pin } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Repeat, Shuffle, ChevronDown, Plus, Heart, Pin, Search, Battery, Home, X, ListMusic } from 'lucide-react';
+import { searchYouTube, YouTubeVideo } from '../lib/youtube-search';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
@@ -757,6 +758,13 @@ export default function Ipod3D() {
 
     // --- History & Persistence ---
     const [dontAskAgain, setDontAskAgain] = useState(false);
+
+    // Search State
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
+    const [searchError, setSearchError] = useState<string | null>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [playingSource, setPlayingSource] = useState<'From URL' | 'History' | 'Liked Songs'>('History');
     const [isLiked, setIsLiked] = useState(false);
     const [queue, setQueue] = useState<any[]>([]);
@@ -1088,12 +1096,13 @@ export default function Ipod3D() {
         }
     };
 
-    const handleConfirm = async () => {
+    // Extracted Play Logic
+    const playVideoFromUrl = async (url: string) => {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
         const listRegExp = /[?&]list=([^#&?]+)/;
 
-        const match = videoUrl.match(regExp);
-        const listMatch = videoUrl.match(listRegExp);
+        const match = url.match(regExp);
+        const listMatch = url.match(listRegExp);
 
         if (listMatch && listMatch[1]) {
             // It's a playlist!
@@ -1106,14 +1115,12 @@ export default function Ipod3D() {
 
                 let dbItems: any[] = [];
                 if (isSignedIn && user) {
-                    // Delete existing entries for these videos
                     await supabase
                         .from('history')
                         .delete()
                         .eq('user_id', user.id)
                         .in('video_id', Array.from(newIds));
 
-                    // Insert new entries
                     const itemsToInsert = playlistItems.items.map((item: any) => ({
                         user_id: user.id,
                         video_id: item.id,
@@ -1145,8 +1152,6 @@ export default function Ipod3D() {
                     });
 
                     const nextHistory = [...filtered, ...newHistoryItems];
-
-                    // UPDATE QUEUE TO MATCH HISTORY HERE
                     setQueue(nextHistory);
 
                     let jumpIndex = nextHistory.length - newHistoryItems.length; // Start of new items
@@ -1187,7 +1192,7 @@ export default function Ipod3D() {
                 const { data, error } = await supabase
                     .from('history')
                     .insert([
-                        { user_id: user.id, video_id: newId, url: videoUrl, title: title }
+                        { user_id: user.id, video_id: newId, url: url, title: title }
                     ])
                     .select();
                 if (data && data[0]) dbId = data[0].id;
@@ -1195,12 +1200,9 @@ export default function Ipod3D() {
 
             setHistory(prev => {
                 const filtered = prev.filter(item => item.id !== newId);
-                const newItem = { id: newId, url: videoUrl, title: title, dbId: dbId, fromPlaylist: false };
+                const newItem = { id: newId, url: url, title: title, dbId: dbId, fromPlaylist: false };
                 const nextHistory = [...filtered, newItem];
-
-                // UPDATE QUEUE TO MATCH HISTORY
                 setQueue(nextHistory);
-
                 setCurrentIndex(nextHistory.length - 1);
                 return nextHistory;
             });
@@ -1209,6 +1211,35 @@ export default function Ipod3D() {
             setHasStarted(true);
             setPlayingSource('From URL');
             setShowHome(false);
+        }
+    };
+
+    const handleConfirm = async () => {
+        // ALWAYS SEARCH - Ignore URL playing logic for input
+        if (videoUrl.trim()) {
+            console.log("Starting search for:", videoUrl);
+            setIsSearching(true);
+            setSearchError(null);
+
+            const { items, error } = await searchYouTube(videoUrl);
+            console.log("Search results:", items, error);
+
+            if (error) {
+                console.error("Search error:", error);
+                setSearchError(error);
+                setIsSearching(false);
+                return;
+            }
+            if (!items || items.length === 0) {
+                console.warn("No results found");
+                setSearchError("No results found");
+                setIsSearching(false);
+                return;
+            }
+            setSearchResults(items);
+            setIsSearching(false);
+            setTimeout(() => inputRef.current?.focus(), 100);
+            return;
         }
     };
 
@@ -1515,7 +1546,7 @@ export default function Ipod3D() {
                             e.preventDefault();
                             handleConfirm();
                         }}
-                        className="fixed top-8 right-8 w-[360px] px-4 z-50 animate-in slide-in-from-top-4 fade-in duration-700"
+                        className="fixed top-6 right-6 w-[300px] z-50 animate-in slide-in-from-top-4 fade-in duration-700"
                     >
                         <div
                             className={`
@@ -1531,7 +1562,7 @@ export default function Ipod3D() {
                             <div className="relative flex items-center">
                                 {showArrow && (
                                     <div className="absolute right-[100%] top-1/2 -translate-y-1/2 flex items-center pr-2 pointer-events-none opacity-80">
-                                        <span className="text-sm font-serif italic text-stone-500 whitespace-nowrap pb-2 mr-1">paste your link</span>
+                                        <span className="text-sm font-serif italic text-stone-500 whitespace-nowrap pb-2 mr-1">search on youtube</span>
                                         <HandDrawnArrow className="text-stone-600 rotate-12 transform translate-y-2" />
                                     </div>
                                 )}
@@ -1553,29 +1584,55 @@ export default function Ipod3D() {
                                 </div>
 
                                 <input
-                                    type="url"
-                                    placeholder="Paste a YouTube link"
+                                    ref={inputRef}
+                                    type="text"
+                                    placeholder="Search YouTube"
                                     value={videoUrl}
-                                    onChange={(e) => setVideoUrl(e.target.value)}
+                                    onChange={(e) => {
+                                        setVideoUrl(e.target.value);
+                                        // Live Search Debounce
+                                        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+                                        if (e.target.value.trim().length > 2) {
+                                            searchTimeoutRef.current = setTimeout(() => {
+                                                handleConfirm();
+                                            }, 500);
+                                        } else if (e.target.value.trim().length === 0) {
+                                            setSearchResults([]);
+                                        }
+                                    }}
                                     onFocus={() => {
                                         setIsFocused(true);
                                         setShowArrow(false);
                                     }}
-                                    onBlur={() => setIsFocused(false)}
+                                    onBlur={() => {
+                                        // Delay blur to allow clicking results
+                                        setTimeout(() => setIsFocused(false), 200);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleConfirm();
+                                        }
+                                    }}
                                     className="
-                                flex-1 bg-transparent py-4 pr-4 
-                                text-stone-800 text-[15px] font-light tracking-wide
+                                flex-1 bg-transparent py-2.5 pr-4
+                                text-stone-800 text-[13px] font-light tracking-wide
                                 placeholder:text-stone-400 placeholder:font-light
                                 focus:outline-none
-                            "
+                                "
                                 />
 
                                 {/* Animated submit button */}
                                 <div className="pr-2">
                                     <button
-                                        type="submit"
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            handleConfirm();
+                                        }}
                                         className={`
-                                relative w-10 h-10 rounded-xl 
+                                relative w-8 h-8 rounded-xl 
                                 bg-gradient-to-b from-stone-700 to-stone-900
                                 shadow-md hover:shadow-lg
                                 transition-all duration-200 ease-out
@@ -1587,10 +1644,45 @@ export default function Ipod3D() {
                                     >
                                         {/* Button shine */}
                                         <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/20 to-transparent" />
-                                        <Play className="w-4 h-4 text-white fill-white relative z-10 ml-0.5" />
+                                        {isSearching ? (
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        ) : (
+                                            <Search className="w-4 h-4 text-white relative z-10" />
+                                        )}
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Search Results Dropdown */}
+                            {searchResults.length > 0 && isFocused && (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1 z-[100]">
+                                    {searchResults.map((result) => (
+                                        <button
+                                            key={result.id}
+                                            type="button"
+                                            onClick={() => {
+                                                // Call playVideoFromUrl directly
+                                                playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`);
+                                                setSearchResults([]);
+                                            }}
+                                            className="w-full flex items-center gap-2 p-1.5 hover:bg-blue-50/50 rounded-lg transition-colors text-left group"
+                                        >
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="text-xs font-medium text-gray-800 truncate group-hover:text-blue-600">{result.title}</h4>
+                                                <p className="text-[10px] text-gray-500 truncate">{result.channel}</p>
+                                            </div>
+                                            <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity mr-2" fill="currentColor" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Error Message Display */}
+                            {searchError && (
+                                <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-red-50/90 backdrop-blur-md rounded-xl border border-red-200 text-red-600 text-xs text-center font-medium animate-in fade-in slide-in-from-top-2">
+                                    {searchError}
+                                </div>
+                            )}
                         </div>
                     </form>
                 )
@@ -1643,18 +1735,39 @@ export default function Ipod3D() {
                                     </div>
 
                                     <input
-                                        type="url"
-                                        placeholder="Paste a YouTube link"
+                                        ref={inputRef}
+                                        type="text"
+                                        placeholder="Search YouTube"
                                         value={videoUrl}
-                                        onChange={(e) => setVideoUrl(e.target.value)}
+                                        onChange={(e) => {
+                                            setVideoUrl(e.target.value);
+                                            // Live Search Debounce
+                                            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+                                            if (e.target.value.trim().length > 2) {
+                                                searchTimeoutRef.current = setTimeout(() => {
+                                                    handleConfirm();
+                                                }, 500);
+                                            } else if (e.target.value.trim().length === 0) {
+                                                setSearchResults([]);
+                                            }
+                                        }}
                                         onFocus={() => {
                                             setIsFocused(true);
                                             setShowArrow(false);
                                         }}
-                                        onBlur={() => setIsFocused(false)}
+                                        onBlur={() => {
+                                            setTimeout(() => setIsFocused(false), 200);
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleConfirm();
+                                            }
+                                        }}
                                         className="
-                                    flex-1 bg-transparent py-4 pr-4 
-                                    text-stone-800 text-[15px] font-light tracking-wide
+                                    flex-1 bg-transparent py-3 pr-4 
+                                    text-stone-800 text-[14px] font-light tracking-wide
                                     placeholder:text-stone-400 placeholder:font-light
                                     focus:outline-none
                                 "
@@ -1678,10 +1791,37 @@ export default function Ipod3D() {
                                         >
                                             {/* Button shine */}
                                             <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/20 to-transparent" />
-                                            <Play className="w-4 h-4 text-white fill-white relative z-10 ml-0.5" />
+                                            {isSearching ? (
+                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            ) : (
+                                                <Search className="w-4 h-4 text-white relative z-10" />
+                                            )}
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Search Results Dropdown (Initial Screen) */}
+                                {searchResults.length > 0 && isFocused && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1">
+                                        {searchResults.map((result) => (
+                                            <button
+                                                key={result.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`);
+                                                    setSearchResults([]);
+                                                }}
+                                                className="w-full flex items-center gap-3 p-2 hover:bg-blue-50/50 rounded-xl transition-colors text-left group"
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <h4 className="text-sm font-medium text-gray-800 truncate group-hover:text-blue-600">{result.title}</h4>
+                                                    <p className="text-[11px] text-gray-500 truncate">{result.channel}</p>
+                                                </div>
+                                                <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity mr-2" fill="currentColor" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             {/* Subtle hint text */}
