@@ -4,13 +4,14 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown, X, ListMusic } from 'lucide-react';
+import { Play, Link2, SkipBack, SkipForward, Trash2, Film, Rewind, FastForward, Battery, Heart, Home, ChevronDown, X, ListMusic, Pin } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
 import { fetchPlaylistItems } from '../lib/youtube-api';
 import MiniPlayer from './MiniPlayer';
 import AddToPlaylistModal from './AddToPlaylistModal';
+import CustomUserMenu from './CustomUserMenu';
 
 // --- Icons ---
 
@@ -40,6 +41,42 @@ function CustomPlaylistIcon({ size = 24, className = "" }: { size?: number, clas
             <line x1="40" y1="128" x2="136" y2="128" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
             <line x1="40" y1="192" x2="136" y2="192" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
             <polygon points="240 160 176 200 176 120 240 160" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="16" />
+        </svg>
+    );
+}
+
+function HandDrawnArrow({ className, style }: { className?: string; style?: React.CSSProperties }) {
+    return (
+        <svg
+            className={className}
+            style={style}
+            width="60"
+            height="50"
+            viewBox="0 0 60 50"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+        >
+            <path
+                d="M5 45 C 25 35, 10 10, 45 15"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M45 15 L 35 8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <path
+                d="M45 15 L 38 22"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
         </svg>
     );
 }
@@ -210,9 +247,11 @@ interface ScreenOverlayProps {
     playlists: any[];
     activePlaylistItems: any[];
     onOpenPlaylist: (id: number) => void;
+    onTogglePin: (playlist: any) => void;
+    onToggleLikeItem: (item: any) => void;
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem }: ScreenOverlayProps) {
     // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
     const [viewTitle, setViewTitle] = useState(''); // For playlist header
@@ -283,6 +322,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
     return (
         <>
+
             {/* REMOVED: 3D MINI PLAYER (Floating) - Now rendered in Ipod3D as 2D */}
 
             <Html
@@ -299,6 +339,21 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                 }}
             >
                 <div className="w-full h-full bg-white border-2 border-black rounded-[4px] relative flex font-sans overflow-hidden box-border shadow-inner pointer-events-auto">
+                    <style>{`
+                        .ipod-scrollbar::-webkit-scrollbar {
+                            width: 5px;
+                        }
+                        .ipod-scrollbar::-webkit-scrollbar-track {
+                            background: transparent;
+                        }
+                        .ipod-scrollbar::-webkit-scrollbar-thumb {
+                            background-color: #3b82f6;
+                            border-radius: 4px;
+                        }
+                        .ipod-scrollbar::-webkit-scrollbar-thumb:hover {
+                            background-color: #2563eb;
+                        }
+                    `}</style>
                     {/* Persistent Player - Hidden but mounted */}
                     {videoId && (
                         <div className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none overflow-hidden z-0">
@@ -334,7 +389,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-center shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
                                             <span className="text-[12px] font-bold text-white drop-shadow-sm">iPod</span>
                                         </div>
-                                        <div className="flex-1 flex flex-col py-2 overflow-y-auto ipod-scrollbar">
+                                        <div className="flex-1 flex flex-col py-2 overflow-y-auto ipod-scrollbar min-h-0">
                                             <div className="px-2 mb-2">
                                                 <p className="text-[11px] font-semibold text-black leading-tight text-center">
                                                     What do you want to listen to?
@@ -354,25 +409,39 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                                 playlists && playlists.length > 0 && (
                                                     <div className="mt-0">
                                                         {playlists.map(pl => (
-                                                            <button
-                                                                key={pl.id}
-                                                                onClick={async () => {
-                                                                    await onOpenPlaylist(pl.id);
-                                                                    setViewTitle(pl.name);
-                                                                    setView('playlist');
-                                                                }}
-                                                                className="w-full bg-white hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] text-black hover:text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold mb-1 group transition-all"
-                                                            >
-                                                                <span className="truncate">{pl.name}</span>
-                                                                <span className="text-gray-400 group-hover:text-white text-[10px]">›</span>
-                                                            </button>
+                                                            <div key={pl.id} className="group relative mb-1">
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        await onOpenPlaylist(pl.id);
+                                                                        setViewTitle(pl.name);
+                                                                        setView('playlist');
+                                                                    }}
+                                                                    className="w-full bg-white hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] text-black hover:text-white px-3 py-1 text-[11px] flex justify-between items-center font-semibold transition-all group/main"
+                                                                >
+                                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                                        {pl.is_pinned && <Pin size={8} className="rotate-45 shrink-0 text-blue-500 group-hover/main:text-white" />}
+                                                                        <span className="truncate">{pl.name}</span>
+                                                                    </div>
+                                                                    <span className="text-gray-400 group-hover:text-white text-[10px]">›</span>
+                                                                </button>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        onTogglePin(pl);
+                                                                    }}
+                                                                    className={`absolute right-6 top-1/2 -translate-y-1/2 p-1 hover:bg-black/10 rounded-full transition-colors opacity-100`}
+                                                                    title={pl.is_pinned ? "Unpin Playlist" : "Pin Playlist"}
+                                                                >
+                                                                    <Pin size={10} className={`${pl.is_pinned ? 'text-blue-500 fill-blue-500' : 'text-blue-500'} group-hover:text-white group-hover:fill-white transition-colors`} />
+                                                                </button>
+                                                            </div>
                                                         ))}
                                                     </div>
                                                 )
                                             ) : (
                                                 <div className="mt-2 px-3 text-center">
                                                     <p className="text-[10px] text-gray-500 font-medium leading-tight">
-                                                        Sign in to save playlists but you can play videos without signing in!
+                                                        Sign in to save playlists but you can play videos without signing in by pasting your yt link!
                                                     </p>
                                                 </div>
                                             )}
@@ -444,21 +513,6 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         className="flex-1 overflow-y-auto ipod-scrollbar"
                                         onPointerDown={(e) => e.stopPropagation()}
                                     >
-                                        <style>{`
-                                            .ipod-scrollbar::-webkit-scrollbar {
-                                                width: 5px;
-                                            }
-                                            .ipod-scrollbar::-webkit-scrollbar-track {
-                                                background: transparent;
-                                            }
-                                            .ipod-scrollbar::-webkit-scrollbar-thumb {
-                                                background-color: #3b82f6;
-                                                border-radius: 4px;
-                                            }
-                                            .ipod-scrollbar::-webkit-scrollbar-thumb:hover {
-                                                background-color: #2563eb;
-                                            }
-                                        `}</style>
                                         {likedSongs.length === 0 ? (
                                             <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
                                                 <Heart size={32} className="mb-2 opacity-20" />
@@ -514,24 +568,40 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                             </div>
                                         ) : (
                                             <ul className="divide-y divide-gray-100">
-                                                {activePlaylistItems.map((item) => (
-                                                    <li key={item.id} className="flex items-center gap-2 p-2 hover:bg-blue-50 transition-colors group">
-                                                        <button
-                                                            onClick={async () => {
-                                                                onPlay({
-                                                                    ...item,
-                                                                    id: item.video_id
-                                                                });
-                                                            }}
-                                                            className="flex-1 flex flex-col text-left min-w-0"
-                                                        >
-                                                            <span className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.title}</span>
-                                                            <span className="text-[9px] text-gray-500">
-                                                                {item.duration ? formatTime(item.duration) : '--:--'}
-                                                            </span>
-                                                        </button>
-                                                    </li>
-                                                ))}
+                                                {activePlaylistItems.map((item) => {
+                                                    const isItemLiked = likedSongs.some(ls => ls.video_id === item.video_id);
+                                                    return (
+                                                        <li key={item.id} className="flex items-center gap-2 p-2 hover:bg-blue-50 transition-colors group">
+                                                            <button
+                                                                onClick={async () => {
+                                                                    onPlay({
+                                                                        ...item,
+                                                                        id: item.video_id
+                                                                    });
+                                                                }}
+                                                                className="flex-1 flex flex-col text-left min-w-0"
+                                                            >
+                                                                <span className="text-xs font-semibold text-gray-800 truncate leading-snug">{item.title}</span>
+                                                                <span className="text-[9px] text-gray-500">
+                                                                    {item.duration ? formatTime(item.duration) : '--:--'}
+                                                                </span>
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onToggleLikeItem(item);
+                                                                }}
+                                                                className="p-1.5 hover:bg-red-50 rounded-full transition-colors group/heart"
+                                                            >
+                                                                {isItemLiked ? (
+                                                                    <Heart size={14} className="fill-red-500 text-red-500" />
+                                                                ) : (
+                                                                    <Heart size={14} className="text-gray-300 group-hover/heart:text-red-500" />
+                                                                )}
+                                                            </button>
+                                                        </li>
+                                                    );
+                                                })}
                                             </ul>
                                         )}
                                     </div>
@@ -677,6 +747,7 @@ export default function Ipod3D() {
     const [isModelLoaded, setIsModelLoaded] = useState(false);
 
     const [showHome, setShowHome] = useState(false);
+    const [showArrow, setShowArrow] = useState(true);
 
     // --- Player Tracking State (Lifted for MiniPlayer) ---
     const [progress, setProgress] = useState(0);
@@ -841,6 +912,7 @@ export default function Ipod3D() {
                     .from('playlists')
                     .select('*')
                     .eq('user_id', user.id)
+                    .order('is_pinned', { ascending: false })
                     .order('created_at', { ascending: false });
                 if (data) setPlaylists(data);
             };
@@ -1296,6 +1368,41 @@ export default function Ipod3D() {
             .eq('id', song.id); // Use row ID or video_id? List normally has row ID. state uses * rows.
     };
 
+    const handleToggleLikeItem = async (playlistItem: any) => {
+        if (!user) return;
+        // Check if in likedSongs
+        const existingLike = likedSongs.find(ls => ls.video_id === playlistItem.video_id);
+
+        if (existingLike) {
+            // Already liked -> Unlike
+            handleUnlikeFromList(existingLike);
+        } else {
+            // Not liked -> Like
+            const newLike = {
+                user_id: user.id,
+                video_id: playlistItem.video_id,
+                title: playlistItem.title,
+                url: playlistItem.url || `https://www.youtube.com/watch?v=${playlistItem.video_id}`,
+                channel: playlistItem.channel,
+                duration: playlistItem.duration
+            };
+
+            // Optimistic
+            const tempId = Date.now();
+            setLikedSongs(prev => [{ ...newLike, id: tempId, created_at: new Date().toISOString() }, ...prev]);
+
+            // If current playing song matches this, set isLiked=true
+            if (currentIndex >= 0 && queue[currentIndex] && queue[currentIndex].id === playlistItem.video_id) {
+                setIsLiked(true);
+            }
+
+            const { data } = await supabase.from('liked_songs').upsert(newLike).select().single();
+            if (data) {
+                setLikedSongs(prev => prev.map(p => p.id === tempId ? data : p));
+            }
+        }
+    };
+
     const handleGoHome = () => {
         if (currentVideoId) {
             setShowHome(true);
@@ -1360,7 +1467,7 @@ export default function Ipod3D() {
                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Player</span>
                             <div className="flex gap-2">
                                 {isLoaded && (
-                                    isSignedIn ? <UserButton /> : <SignInButton mode="modal"><button className="text-xs bg-black text-white px-3 py-1.5 rounded-full font-medium hover:bg-gray-800 transition-colors">Sign In</button></SignInButton>
+                                    isSignedIn ? <CustomUserMenu /> : <SignInButton mode="modal"><button className="text-xs bg-black text-white px-3 py-1.5 rounded-full font-medium hover:bg-gray-800 transition-colors">Sign In</button></SignInButton>
                                 )}
                             </div>
                         </div>
@@ -1422,6 +1529,12 @@ export default function Ipod3D() {
                             <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
 
                             <div className="relative flex items-center">
+                                {showArrow && (
+                                    <div className="absolute right-[100%] top-1/2 -translate-y-1/2 flex items-center pr-2 pointer-events-none opacity-80">
+                                        <span className="text-sm font-serif italic text-stone-500 whitespace-nowrap pb-2 mr-1">paste your link</span>
+                                        <HandDrawnArrow className="text-stone-600 rotate-12 transform translate-y-2" />
+                                    </div>
+                                )}
                                 {/* Minimal link icon */}
                                 <div className="pl-5 pr-2">
                                     <svg
@@ -1444,7 +1557,10 @@ export default function Ipod3D() {
                                     placeholder="Paste a YouTube link"
                                     value={videoUrl}
                                     onChange={(e) => setVideoUrl(e.target.value)}
-                                    onFocus={() => setIsFocused(true)}
+                                    onFocus={() => {
+                                        setIsFocused(true);
+                                        setShowArrow(false);
+                                    }}
                                     onBlur={() => setIsFocused(false)}
                                     className="
                                 flex-1 bg-transparent py-4 pr-4 
@@ -1503,6 +1619,12 @@ export default function Ipod3D() {
                                 <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
 
                                 <div className="relative flex items-center">
+                                    {showArrow && (
+                                        <div className="absolute right-[100%] top-1/2 -translate-y-1/2 flex items-center pr-2 pointer-events-none opacity-80">
+                                            <span className="text-sm font-serif italic text-stone-500 whitespace-nowrap pb-2 mr-1">paste your link</span>
+                                            <HandDrawnArrow className="text-stone-600 rotate-12 transform translate-y-2" />
+                                        </div>
+                                    )}
                                     {/* Minimal link icon */}
                                     <div className="pl-5 pr-2">
                                         <svg
@@ -1525,7 +1647,10 @@ export default function Ipod3D() {
                                         placeholder="Paste a YouTube link"
                                         value={videoUrl}
                                         onChange={(e) => setVideoUrl(e.target.value)}
-                                        onFocus={() => setIsFocused(true)}
+                                        onFocus={() => {
+                                            setIsFocused(true);
+                                            setShowArrow(false);
+                                        }}
                                         onBlur={() => setIsFocused(false)}
                                         className="
                                     flex-1 bg-transparent py-4 pr-4 
@@ -1626,6 +1751,7 @@ export default function Ipod3D() {
                                 playlists={playlists}
                                 activePlaylistItems={activePlaylistItems}
                                 onOpenPlaylist={handleOpenPlaylist}
+                                onToggleLikeItem={handleToggleLikeItem}
 
                                 lastPlayed={history.length > 0 ? history[history.length - 1] : undefined}
                                 onResume={() => {
@@ -1643,6 +1769,23 @@ export default function Ipod3D() {
                                 isPaused={isPaused}
                                 onLoad={() => setIsModelLoaded(true)}
                                 onAddToPlaylist={() => setIsPlaylistModalOpen(true)}
+                                onTogglePin={async (playlist) => {
+                                    if (!user) return;
+                                    const newStatus = !playlist.is_pinned;
+
+                                    // Optimistic Update
+                                    setPlaylists(prev => prev.map(p =>
+                                        p.id === playlist.id ? { ...p, is_pinned: newStatus } : p
+                                    ).sort((a, b) => {
+                                        if (a.is_pinned === b.is_pinned) return 0;
+                                        return a.is_pinned ? -1 : 1;
+                                    }));
+
+                                    await supabase
+                                        .from('playlists')
+                                        .update({ is_pinned: newStatus })
+                                        .eq('id', playlist.id);
+                                }}
                             />
                         </group>
                     </Suspense>
