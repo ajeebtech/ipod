@@ -250,9 +250,11 @@ interface ScreenOverlayProps {
     onOpenPlaylist: (id: number) => void;
     onTogglePin: (playlist: any) => void;
     onToggleLikeItem: (item: any) => void;
+    isLooping: boolean;
+    onToggleLoop: () => void;
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem, isLooping, onToggleLoop }: ScreenOverlayProps) {
     // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
     const [viewTitle, setViewTitle] = useState(''); // For playlist header
@@ -296,6 +298,8 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
     useEffect(() => {
         onLoad();
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement) return;
+
             if (e.code === 'Space') {
                 e.preventDefault(); // Prevent scrolling
                 if (playerRef.current && playerRef.current.getPlayerState) {
@@ -693,6 +697,16 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                                 <ListMusic size={18} className="text-[#888] group-hover:text-[#666]" />
                                             </button>
                                             <button
+                                                onClick={(e) => { e.stopPropagation(); onToggleLoop(); }}
+                                                className="p-1.5 hover:scale-110 active:scale-95 transition-transform group"
+                                                title={isLooping ? "Disable Loop" : "Enable Loop"}
+                                            >
+                                                <Repeat
+                                                    size={18}
+                                                    className={`transition-colors ${isLooping ? "text-blue-500" : "text-[#888] group-hover:text-[#666]"}`}
+                                                />
+                                            </button>
+                                            <button
                                                 onClick={(e) => { e.stopPropagation(); onToggleLike(); }}
                                                 className="p-1.5 hover:scale-110 active:scale-95 transition-transform group"
                                                 title={isLiked ? "Remove from Liked" : "Add to Liked"}
@@ -771,6 +785,7 @@ export default function Ipod3D() {
     const [likedSongs, setLikedSongs] = useState<any[]>([]);
     const [playlists, setPlaylists] = useState<any[]>([]);
     const [activePlaylistItems, setActivePlaylistItems] = useState<any[]>([]);
+    const [isLooping, setIsLooping] = useState(false);
 
     // OS Detection for Zoom Hint
     const [zoomKey, setZoomKey] = useState('Cmd');
@@ -817,6 +832,10 @@ export default function Ipod3D() {
     const playerRef = useRef<YouTubePlayer | null>(null);
 
     const currentVideoId = currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].id : null;
+
+    useEffect(() => {
+        setIsLooping(false);
+    }, [currentVideoId]);
 
     useEffect(() => {
         const skipStart = localStorage.getItem('ipod-skip-start');
@@ -998,6 +1017,23 @@ export default function Ipod3D() {
             // Only auto-play if the next item is from a playlist OR we are in a valid queue
             // Logic update: If in Liked Songs queue, always play next.
             // If in history/playlist mode...
+            // If Looping, restart video
+            if (isLooping) {
+                event.target.playVideo(); // YouTube players usually auto-reset on play() if ended, or we can seekTo(0)
+                // Reliable way:
+                // event.target.seekTo(0); 
+                // event.target.playVideo();
+                // Actually, simple play() often works, but let's be safe
+                // event.target.seekTo(0); 
+                // event.target.playVideo(); 
+                // Wait, if we just call play, it might work? Let's try seekTo(0) explicitly if needed.
+                // Actually, the API might not be fully readied immediately.
+                // Let's force seek and play.
+                event.target.seekTo(0);
+                event.target.playVideo();
+                return;
+            }
+
             if (currentIndex < queue.length - 1) {
                 const nextItem = queue[currentIndex + 1];
                 // If playing from history (where queue==history), we respect 'fromPlaylist' flag to auto-continue?
@@ -1319,6 +1355,7 @@ export default function Ipod3D() {
             id: s.video_id,
             url: s.url,
             title: s.title,
+            channel: s.channel,
             dbId: undefined, // Liked songs don't track history DB id in this context
             fromPlaylist: false, // Treat as flat list
             isLikedItem: true // Tag it
@@ -1872,12 +1909,24 @@ export default function Ipod3D() {
                             <DelayWaiter resource={delayResource} />
                             <ScreenOverlay
                                 videoId={currentVideoId}
-                                title={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].title : undefined}
-                                channelName={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].channel : undefined}
+                                title={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].title : ''}
+                                channelName={currentIndex >= 0 && queue[currentIndex] ? (queue[currentIndex].channel || "YouTube") : ''}
                                 index={currentIndex + 1}
                                 total={queue.length}
                                 onPlayerReady={handlePlayerReady}
-                                onStateChange={handleStateChange}
+                                onStateChange={(e: any) => {
+                                    if (e.data === -1) setHasStarted(true);
+                                    if (e.data === 1) setIsPlaying(true);
+                                    if (e.data === 2) setIsPlaying(false);
+                                    if (e.data === 0) {
+                                        if (isLooping) {
+                                            e.target.seekTo(0);
+                                            e.target.playVideo();
+                                        } else {
+                                            playNext();
+                                        }
+                                    }
+                                }}
                                 playingSource={playingSource}
                                 isLiked={isLiked}
                                 onToggleLike={handleToggleLike}
@@ -1891,24 +1940,6 @@ export default function Ipod3D() {
                                 playlists={playlists}
                                 activePlaylistItems={activePlaylistItems}
                                 onOpenPlaylist={handleOpenPlaylist}
-                                onToggleLikeItem={handleToggleLikeItem}
-
-                                lastPlayed={history.length > 0 ? history[history.length - 1] : undefined}
-                                onResume={() => {
-                                    if (currentVideoId && showHome) {
-                                        setShowHome(false);
-                                    } else {
-                                        playHistoryItem(history.length - 1);
-                                    }
-                                }}
-                                showHome={showHome}
-                                // Passed down state
-                                progress={progress}
-                                currentTime={currentTime}
-                                duration={duration}
-                                isPaused={isPaused}
-                                onLoad={() => setIsModelLoaded(true)}
-                                onAddToPlaylist={() => setIsPlaylistModalOpen(true)}
                                 onTogglePin={async (playlist) => {
                                     if (!user) return;
                                     const newStatus = !playlist.is_pinned;
@@ -1926,6 +1957,25 @@ export default function Ipod3D() {
                                         .update({ is_pinned: newStatus })
                                         .eq('id', playlist.id);
                                 }}
+                                onToggleLikeItem={handleToggleLikeItem}
+                                isLooping={isLooping}
+                                onToggleLoop={() => setIsLooping(!isLooping)}
+                                lastPlayed={history.length > 0 ? history[history.length - 1] : undefined}
+                                onResume={() => {
+                                    if (currentVideoId && showHome) {
+                                        setShowHome(false);
+                                    } else {
+                                        playHistoryItem(history.length - 1);
+                                    }
+                                }}
+                                showHome={showHome}
+                                // Passed down state
+                                progress={progress}
+                                currentTime={currentTime}
+                                duration={duration}
+                                isPaused={isPaused}
+                                onLoad={() => setIsModelLoaded(true)}
+                                onAddToPlaylist={() => setIsPlaylistModalOpen(true)}
                             />
                         </group>
                     </Suspense>
