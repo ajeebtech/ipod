@@ -953,7 +953,7 @@ export default function Ipod3D() {
             fetchLikedSongs();
             fetchPlaylists();
         }
-    }, [isSignedIn, user, isLiked, isPlaylistModalOpen]); // Sync when modal closes (created new playlist) or liked status changes
+    }, [isSignedIn, user, isPlaylistModalOpen]); // Sync when modal closes (created new playlist)
 
     const handleOpenPlaylist = async (playlistId: number) => {
         if (!user) return;
