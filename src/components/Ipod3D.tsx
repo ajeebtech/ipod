@@ -394,7 +394,11 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         <div className="h-6 bg-gradient-to-b from-[#5c9ae6] to-[#407ad6] flex items-center justify-center shadow-sm shrink-0 z-10 border-b border-[#2a5caa]">
                                             <span className="text-[12px] font-bold text-white drop-shadow-sm">iPod</span>
                                         </div>
-                                        <div className="flex-1 flex flex-col py-2 overflow-y-auto ipod-scrollbar min-h-0">
+                                        <div
+                                            className="flex-1 flex flex-col py-2 overflow-y-auto ipod-scrollbar min-h-0 touch-pan-y"
+                                            onPointerDown={(e) => e.stopPropagation()}
+                                            onWheel={(e) => e.stopPropagation()}
+                                        >
                                             <div className="px-2 mb-2">
                                                 <p className="text-[11px] font-semibold text-black leading-tight text-center">
                                                     What do you want to listen to?
@@ -515,8 +519,9 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         <span className="ml-auto text-[10px] text-gray-500 font-medium">{likedSongs.length} Songs</span>
                                     </div>
                                     <div
-                                        className="flex-1 overflow-y-auto ipod-scrollbar"
+                                        className="flex-1 overflow-y-auto ipod-scrollbar touch-pan-y"
                                         onPointerDown={(e) => e.stopPropagation()}
+                                        onWheel={(e) => e.stopPropagation()}
                                     >
                                         {likedSongs.length === 0 ? (
                                             <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
@@ -563,8 +568,9 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                         <span className="ml-auto text-[10px] text-gray-500 font-medium">{activePlaylistItems.length} Songs</span>
                                     </div>
                                     <div
-                                        className="flex-1 overflow-y-auto ipod-scrollbar"
+                                        className="flex-1 overflow-y-auto ipod-scrollbar touch-pan-y"
                                         onPointerDown={(e) => e.stopPropagation()}
+                                        onWheel={(e) => e.stopPropagation()}
                                     >
                                         {activePlaylistItems.length === 0 ? (
                                             <div className="h-full flex flex-col items-center justify-center text-gray-400 p-4 text-center">
@@ -621,7 +627,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                 {/* Left: Blue Home Button */}
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onGoHome(); }}
-                                    className="flex items-center pointer-events-auto hover:opacity-75 transition-opacity"
+                                    className="flex items-center justify-center pointer-events-auto transition-all bg-white/50 border border-white/60 p-0.5 rounded shadow-[0_1px_2px_rgba(0,0,0,0.1)] hover:bg-white/80 hover:shadow-md active:scale-95 active:shadow-inner"
                                     title="Home"
                                 >
                                     <Home size={12} fill="#3b82f6" className="text-[#2563eb]" />

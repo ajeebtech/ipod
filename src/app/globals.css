@@ -127,3 +127,18 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Custom Scrollbar for iPod Screen */
+.ipod-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.ipod-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ipod-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+.ipod-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.4);
+}
