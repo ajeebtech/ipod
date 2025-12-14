@@ -977,9 +977,9 @@ export default function Ipod3D() {
                 if (data && data.author && currentIndex >= 0 && queue[currentIndex]) {
                     const currentItem = queue[currentIndex];
                     // If channel is missing or different, update it
-                    if (!currentItem.channel) {
-                        const author = data.author;
-
+                    const author = data.author;
+                    // Always update if we have a valid author and it's different or missing
+                    if (author && currentItem.channel !== author) {
                         // Update local state
                         setQueue(prev => {
                             const newQueue = [...prev];
@@ -1133,7 +1133,7 @@ export default function Ipod3D() {
     };
 
     // Extracted Play Logic
-    const playVideoFromUrl = async (url: string) => {
+    const playVideoFromUrl = async (url: string, channelName?: string, videoTitle?: string) => {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
         const listRegExp = /[?&]list=([^#&?]+)/;
 
@@ -1214,7 +1214,7 @@ export default function Ipod3D() {
         if (match && match[2].length === 11) {
             savePreference();
             const newId = match[2];
-            const title = 'Loading title...';
+            const title = videoTitle || 'Loading title...';
 
             let dbId: number | undefined;
             if (isSignedIn && user) {
@@ -1228,7 +1228,7 @@ export default function Ipod3D() {
                 const { data, error } = await supabase
                     .from('history')
                     .insert([
-                        { user_id: user.id, video_id: newId, url: url, title: title }
+                        { user_id: user.id, video_id: newId, url: url, title: title, channel: channelName }
                     ])
                     .select();
                 if (data && data[0]) dbId = data[0].id;
@@ -1236,7 +1236,7 @@ export default function Ipod3D() {
 
             setHistory(prev => {
                 const filtered = prev.filter(item => item.id !== newId);
-                const newItem = { id: newId, url: url, title: title, dbId: dbId, fromPlaylist: false };
+                const newItem = { id: newId, url: url, title: title, channel: channelName, dbId: dbId, fromPlaylist: false };
                 const nextHistory = [...filtered, newItem];
                 setQueue(nextHistory);
                 setCurrentIndex(nextHistory.length - 1);
@@ -1699,16 +1699,18 @@ export default function Ipod3D() {
                                             type="button"
                                             onClick={() => {
                                                 // Call playVideoFromUrl directly
-                                                playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`);
+                                                // Call playVideoFromUrl directly
+                                                playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`, result.channel, result.title);
+                                                setSearchResults([]);
                                                 setSearchResults([]);
                                             }}
-                                            className="w-full flex items-center gap-2 p-1.5 hover:bg-blue-50/50 rounded-lg transition-colors text-left group"
+                                            className="w-full flex items-center gap-2 p-1.5 hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] rounded-lg transition-all text-left group"
                                         >
                                             <div className="flex-1 min-w-0">
-                                                <h4 className="text-xs font-medium text-gray-800 truncate group-hover:text-blue-600">{result.title}</h4>
-                                                <p className="text-[10px] text-gray-500 truncate">{result.channel}</p>
+                                                <h4 className="text-xs font-medium text-gray-800 truncate group-hover:text-white">{result.title}</h4>
+                                                <p className="text-[10px] text-gray-500 truncate group-hover:text-white/90">{result.channel}</p>
                                             </div>
-                                            <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity mr-2" fill="currentColor" />
+                                            <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 group-hover:text-white transition-opacity mr-2" fill="currentColor" />
                                         </button>
                                     ))}
                                 </div>
@@ -1845,16 +1847,16 @@ export default function Ipod3D() {
                                                 key={result.id}
                                                 type="button"
                                                 onClick={() => {
-                                                    playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`);
+                                                    playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`, result.channel, result.title);
                                                     setSearchResults([]);
                                                 }}
-                                                className="w-full flex items-center gap-3 p-2 hover:bg-blue-50/50 rounded-xl transition-colors text-left group"
+                                                className="w-full flex items-center gap-3 p-2 hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] rounded-xl transition-all text-left group"
                                             >
                                                 <div className="flex-1 min-w-0">
-                                                    <h4 className="text-sm font-medium text-gray-800 truncate group-hover:text-blue-600">{result.title}</h4>
-                                                    <p className="text-[11px] text-gray-500 truncate">{result.channel}</p>
+                                                    <h4 className="text-sm font-medium text-gray-800 truncate group-hover:text-white">{result.title}</h4>
+                                                    <p className="text-[11px] text-gray-500 truncate group-hover:text-white/90">{result.channel}</p>
                                                 </div>
-                                                <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity mr-2" fill="currentColor" />
+                                                <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 group-hover:text-white transition-opacity mr-2" fill="currentColor" />
                                             </button>
                                         ))}
                                     </div>
