@@ -3,6 +3,7 @@ import "./globals.css";
 import { HistoryDrawer } from "@/components/HistoryDrawer";
 import { UpNextDrawer } from "@/components/UpNextDrawer";
 import { Analytics } from "@vercel/analytics/next";
+import MobileWarning from "@/components/MobileWarning";
 
 
 
@@ -26,6 +27,7 @@ export default function RootLayout({
         >
           {children}
           <Analytics />
+          <MobileWarning />
           <div className="fixed bottom-8 w-full flex justify-center gap-4 z-50">
             <HistoryDrawer />
             <UpNextDrawer />
