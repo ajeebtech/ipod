@@ -4,7 +4,7 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
-import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Repeat, Shuffle, ChevronDown, Plus, Heart, Pin, Search, Battery, Home, X, ListMusic } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Repeat, Shuffle, ChevronDown, Plus, Heart, Pin, Search, Battery, Home, X, ListMusic, Volume2, VolumeX } from 'lucide-react';
 import { searchYouTube, YouTubeVideo } from '../lib/youtube-search';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
@@ -760,6 +760,10 @@ export default function Ipod3D() {
     // --- History & Persistence ---
     const [dontAskAgain, setDontAskAgain] = useState(false);
 
+    // --- Volume State ---
+    const [volume, setVolume] = useState(100);
+    const [isMuted, setIsMuted] = useState(false);
+
     // Search State
     const [isSearching, setIsSearching] = useState(false);
     const [searchResults, setSearchResults] = useState<YouTubeVideo[]>([]);
@@ -1314,6 +1318,34 @@ export default function Ipod3D() {
         if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
     };
 
+    const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newVolume = parseInt(e.target.value);
+        setVolume(newVolume);
+        if (playerRef.current) {
+            playerRef.current.setVolume(newVolume);
+            if (newVolume > 0 && isMuted) {
+                setIsMuted(false);
+                playerRef.current.unMute();
+            }
+        }
+    };
+
+    const toggleMute = () => {
+        if (playerRef.current) {
+            if (isMuted) {
+                playerRef.current.unMute();
+                setIsMuted(false);
+                if (volume === 0) {
+                    setVolume(100);
+                    playerRef.current.setVolume(100);
+                }
+            } else {
+                playerRef.current.mute();
+                setIsMuted(true);
+            }
+        }
+    };
+
     const playHistoryItem = async (index: number) => {
         // Optimistically move to end of history (Top of UI)
         const itemToPlay = history[index];
@@ -1601,6 +1633,25 @@ export default function Ipod3D() {
                             <button onClick={playNext} disabled={currentIndex >= queue.length - 1} className="p-2 rounded-full hover:bg-gray-100 disabled:opacity-30 transition-colors" title="Next Video">
                                 <SkipForward size={20} fill="currentColor" />
                             </button>
+                        </div>
+
+                        {/* Volume Controls */}
+                        <div className="flex items-center gap-2 mt-2 px-1">
+                            <button
+                                onClick={toggleMute}
+                                className="p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-600"
+                                title={isMuted ? "Unmute" : "Mute"}
+                            >
+                                {isMuted || volume === 0 ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                            </button>
+                            <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                value={isMuted ? 0 : volume}
+                                onChange={handleVolumeChange}
+                                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-black"
+                            />
                         </div>
                     </div>
                     {/* Show Up Next ONLY if queue is present and has invalid items? */
