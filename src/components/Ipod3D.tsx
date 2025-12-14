@@ -84,38 +84,17 @@ function HandDrawnArrow({ className, style }: { className?: string; style?: Reac
 
 // --- Artificial Delay Helper ---
 
-function createDelayResource(ms: number) {
-    let status = 'pending';
-    let promise: Promise<void> | null = null;
 
-    return {
-        read() {
-            if (status === 'pending') {
-                if (!promise) {
-                    promise = new Promise((resolve) => setTimeout(resolve, ms)).then(() => {
-                        status = 'success';
-                    });
-                }
-                throw promise;
-            }
-        }
-    };
-}
-
-const DelayWaiter = ({ resource }: { resource: { read: () => void } }) => {
-    resource.read();
-    return null;
-};
-
-function LoadingState() {
+function FullScreenLoader() {
     return (
-        <Html center>
-            <div className="loader-container">
+        <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+            className="fixed inset-0 z-[10000] bg-[#e8e8e8] flex flex-col items-center justify-center font-sans"
+        >
+            <div className="transform scale-125 mb-8">
                 <style>{`
-                    .loader-container {
-                        pointer-events: none;
-                        user-select: none;
-                    }
                     .wrapper {
                         width: 200px;
                         height: 60px;
@@ -127,7 +106,7 @@ function LoadingState() {
                         height: 20px;
                         position: absolute;
                         border-radius: 50%;
-                        background-color: #000;
+                        background-color: #333;
                         left: 15%;
                         transform-origin: 50%;
                         animation: circle7124 .5s alternate infinite ease;
@@ -202,7 +181,8 @@ function LoadingState() {
                     <div className="shadow" />
                 </div>
             </div>
-        </Html>
+            <p className="text-stone-500 font-medium text-sm tracking-[0.2em] uppercase animate-pulse">Loading Experience</p>
+        </motion.div>
     );
 }
 
@@ -832,8 +812,6 @@ export default function Ipod3D() {
         setCtxCurrentIndex(currentIndex);
     }, [currentIndex, setCtxCurrentIndex]);
 
-    // Artificial delay resource to ensure loading screen is visible for at least 3 seconds
-    const [delayResource] = useState(() => createDelayResource(3000));
 
     // Player ref
     const playerRef = useRef<YouTubePlayer | null>(null);
@@ -1572,6 +1550,8 @@ export default function Ipod3D() {
         <>
             {/* MINI PLAYER (2D Overlay) */}
             <AnimatePresence>
+                {!isModelLoaded && <FullScreenLoader key="full-screen-loader" />}
+
                 {hasStarted && showHome && currentVideoId && (
                     <MiniPlayer
                         key="mini-player"
@@ -1966,10 +1946,9 @@ export default function Ipod3D() {
                     <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
                     <pointLight position={[-10, -10, -10]} intensity={1} />
 
-                    <Suspense fallback={<LoadingState />}>
+                    <Suspense fallback={null}>
                         <group>
                             <Model />
-                            <DelayWaiter resource={delayResource} />
                             <ScreenOverlay
                                 videoId={currentVideoId}
                                 title={currentIndex >= 0 && queue[currentIndex] ? queue[currentIndex].title : ''}
