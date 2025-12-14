@@ -1214,7 +1214,24 @@ export default function Ipod3D() {
         if (match && match[2].length === 11) {
             savePreference();
             const newId = match[2];
-            const title = videoTitle || 'Loading title...';
+
+            let title = videoTitle || 'Loading title...';
+            let channel = channelName;
+
+            // Robustness: If metadata is missing, fetch it!
+            if ((!videoTitle || videoTitle === 'Loading title...' || !channel) && newId) {
+                try {
+                    console.log("Fetching fallback metadata for:", newId);
+                    const { items } = await searchYouTube(newId);
+                    if (items && items.length > 0) {
+                        const matchItem = items[0]; // ID search should return exact match
+                        title = matchItem.title;
+                        channel = matchItem.channel;
+                    }
+                } catch (err) {
+                    console.error("Fallback metadata fetch failed:", err);
+                }
+            }
 
             let dbId: number | undefined;
             if (isSignedIn && user) {
@@ -1228,7 +1245,7 @@ export default function Ipod3D() {
                 const { data, error } = await supabase
                     .from('history')
                     .insert([
-                        { user_id: user.id, video_id: newId, url: url, title: title, channel: channelName }
+                        { user_id: user.id, video_id: newId, url: url, title: title, channel: channel }
                     ])
                     .select();
                 if (data && data[0]) dbId = data[0].id;
@@ -1236,7 +1253,7 @@ export default function Ipod3D() {
 
             setHistory(prev => {
                 const filtered = prev.filter(item => item.id !== newId);
-                const newItem = { id: newId, url: url, title: title, channel: channelName, dbId: dbId, fromPlaylist: false };
+                const newItem = { id: newId, url: url, title: title, channel: channel, dbId: dbId, fromPlaylist: false };
                 const nextHistory = [...filtered, newItem];
                 setQueue(nextHistory);
                 setCurrentIndex(nextHistory.length - 1);
