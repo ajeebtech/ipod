@@ -1,6 +1,13 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
-export default clerkMiddleware();
+export default clerkMiddleware(async (auth, req) => {
+    if (req.nextUrl.hostname === "ipod-five.vercel.app") {
+        const url = new URL(req.nextUrl.toString());
+        url.hostname = "ipod3d.site";
+        return NextResponse.redirect(url);
+    }
+});
 
 export const config = {
     matcher: [
