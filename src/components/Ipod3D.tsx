@@ -1239,7 +1239,20 @@ export default function Ipod3D() {
                 }
             }
 
-            let dbId: number | undefined;
+            setHistory(prev => {
+                const filtered = prev.filter(item => item.id !== newId);
+                const newItem = { id: newId, url: url, title: title, channel: channel, dbId: undefined, fromPlaylist: false }; // dbId undefined initially
+                const nextHistory = [...filtered, newItem];
+                setQueue(nextHistory);
+                setCurrentIndex(nextHistory.length - 1);
+                return nextHistory;
+            });
+
+            setVideoUrl('');
+            setHasStarted(true);
+            setPlayingSource('From URL');
+            setShowHome(false);
+
             if (isSignedIn && user) {
                 // Remove existing entry if it exists to treat this as "latest"
                 await supabase
@@ -1254,22 +1267,12 @@ export default function Ipod3D() {
                         { user_id: user.id, video_id: newId, url: url, title: title, channel: channel }
                     ])
                     .select();
-                if (data && data[0]) dbId = data[0].id;
+
+                // Update dbId after insert
+                if (data && data[0]) {
+                    setHistory(prev => prev.map(item => item.id === newId ? { ...item, dbId: data[0].id } : item));
+                }
             }
-
-            setHistory(prev => {
-                const filtered = prev.filter(item => item.id !== newId);
-                const newItem = { id: newId, url: url, title: title, channel: channel, dbId: dbId, fromPlaylist: false };
-                const nextHistory = [...filtered, newItem];
-                setQueue(nextHistory);
-                setCurrentIndex(nextHistory.length - 1);
-                return nextHistory;
-            });
-
-            setVideoUrl('');
-            setHasStarted(true);
-            setPlayingSource('From URL');
-            setShowHome(false);
         }
     };
 
@@ -1334,25 +1337,39 @@ export default function Ipod3D() {
     };
 
     const playHistoryItem = async (index: number) => {
-        // RE-IMPLEMENTATION TO ENSURE FULL CONTEXT PLAYBACK
-        // User expects "Up Next" to be subsequent items in the Visual List (Newest -> Oldest)
-        const reversedHistory = [...history].reverse();
-        const visualIndex = history.length - 1 - index;
+        // Optimistically move to end of history (Top of UI)
+        const itemToPlay = history[index];
+        if (!itemToPlay) return;
 
-        if (playingSource !== 'History') {
-            setPlayingSource('History');
-            setQueue(reversedHistory);
-        } else {
-            // Even if source is history, ensure queue matches current history state reversed
-            // (Optimization: could check if queue[0] === reversedHistory[0])
-            setQueue(reversedHistory);
-        }
+        // Move to end
+        const newHistory = [...history];
+        newHistory.splice(index, 1);
+        newHistory.push(itemToPlay);
 
-        // We receive 'index' which is the index in the original (ascending) history array.
-        // We need to play the corresponding item in the reversed (descending) queue.
-        setCurrentIndex(visualIndex);
+        setHistory(newHistory);
+
+        // Update Queue to match new history order (reversed for UI/Queue logic?)
+        // If playingSource is History, queue usually mirrors history.
+        // HistoryDrawer displays reversed history.
+        // Queue should probably follow the same reversed order for "Up Next"?
+        const reversedHistory = [...newHistory].reverse();
+        setQueue(reversedHistory);
+
+        // Play the first item (which is the one we just moved to top/end)
+        setCurrentIndex(0);
+
+        setPlayingSource('History');
         setShowHome(false);
         setHasStarted(true);
+
+        // Update DB
+        if (isSignedIn && user && itemToPlay.dbId) {
+            // Update timestamp to make it latest
+            await supabase
+                .from('history')
+                .update({ created_at: new Date().toISOString() })
+                .eq('id', itemToPlay.dbId);
+        }
     };
 
     // Register Context Handler
@@ -1400,7 +1417,20 @@ export default function Ipod3D() {
         setShowHome(false);
 
         // Sync to History (Background)
+        // Sync to History (Background)
         if (user && song.video_id) {
+            // Optimistic Update First
+            setHistory(prev => {
+                const filtered = prev.filter(h => h.id !== song.video_id);
+                return [...filtered, {
+                    id: song.video_id,
+                    url: song.url,
+                    title: song.title,
+                    dbId: -1, // Temporary
+                    channel: song.channel
+                }];
+            });
+
             // 1. Update Supabase
             try {
                 // Delete existing entry for this video to bring it to top
@@ -1410,21 +1440,13 @@ export default function Ipod3D() {
                     user_id: user.id,
                     video_id: song.video_id,
                     title: song.title,
-                    url: song.url
+                    url: song.url,
+                    channel: song.channel
                 }).select().single();
 
                 if (!error && data) {
-                    // 2. Update Local History State
-                    setHistory(prev => {
-                        const filtered = prev.filter(h => h.id !== song.video_id);
-                        return [...filtered, {
-                            id: song.video_id,
-                            url: song.url,
-                            title: song.title,
-                            dbId: data.id,
-                            channel: undefined // We'll fetch this on play
-                        }];
-                    });
+                    // Update DB ID
+                    setHistory(prev => prev.map(p => p.id === song.video_id ? { ...p, dbId: data.id } : p));
                 }
             } catch (err) {
                 console.error("Failed to sync liked song to history", err);

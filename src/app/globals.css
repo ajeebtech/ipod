@@ -10,6 +10,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 @theme inline {
@@ -123,6 +124,7 @@ body {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -132,13 +134,16 @@ body {
 .ipod-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
+
 .ipod-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .ipod-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 10px;
 }
+
 .ipod-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.4);
 }
