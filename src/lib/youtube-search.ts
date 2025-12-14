@@ -5,6 +5,8 @@ export interface YouTubeVideo {
     thumbnail: string;
 }
 
+import { decodeHtml } from './utils';
+
 export async function searchYouTube(query: string): Promise<{ items: YouTubeVideo[], error?: string }> {
     const apiKey = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
 
@@ -30,8 +32,8 @@ export async function searchYouTube(query: string): Promise<{ items: YouTubeVide
 
         const items = data.items.map((item: any) => ({
             id: item.id.videoId,
-            title: item.snippet.title,
-            channel: item.snippet.channelTitle,
+            title: decodeHtml(item.snippet.title),
+            channel: decodeHtml(item.snippet.channelTitle),
             thumbnail: item.snippet.thumbnails.default.url
         }));
 

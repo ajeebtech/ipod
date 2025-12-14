@@ -9,7 +9,7 @@ import { searchYouTube, YouTubeVideo } from '../lib/youtube-search';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, UserButton, SignIn, SignInButton } from "@clerk/nextjs";
 import { supabase } from '../lib/supabase';
-import { fetchPlaylistItems } from '../lib/youtube-api';
+import { fetchPlaylistItems, fetchVideoDetails } from '../lib/youtube-api';
 import MiniPlayer from './MiniPlayer';
 import AddToPlaylistModal from './AddToPlaylistModal';
 import CustomUserMenu from './CustomUserMenu';
@@ -363,6 +363,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                     {videoId && (
                         <div className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none overflow-hidden z-0">
                             <YouTube
+                                key={videoId}
                                 videoId={videoId}
                                 onReady={handleInternalPlayerReady}
                                 onStateChange={onStateChange}
@@ -459,13 +460,13 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
                                     {/* Right: Graphic / Preview */}
                                     <div className="w-1/2 h-full bg-[#f2f2f2] relative flex items-center justify-center overflow-hidden">
-                                        {lastPlayed ? (
+                                        {(videoId || lastPlayed) ? (
                                             <button
                                                 onClick={onResume}
                                                 className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto hover:opacity-90 transition-opacity"
                                             >
                                                 <div className="mb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest scale-90">
-                                                    Last Played
+                                                    {videoId ? "Now Playing" : "Last Played"}
                                                 </div>
                                                 <div
                                                     className="w-full flex flex-col items-center justify-center"
@@ -477,7 +478,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                                     {/* Main Album Art */}
                                                     <div className="w-32 aspect-square relative z-10 shadow-xl border border-white/20">
                                                         <img
-                                                            src={`https://img.youtube.com/vi/${lastPlayed.id}/hqdefault.jpg`}
+                                                            src={`https://img.youtube.com/vi/${videoId || lastPlayed?.id}/hqdefault.jpg`}
                                                             alt="Album Art"
                                                             className="w-full h-full object-cover"
                                                         />
@@ -486,7 +487,7 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                                     {/* Reflection */}
                                                     <div className="w-32 h-16 relative overflow-hidden mt-1">
                                                         <img
-                                                            src={`https://img.youtube.com/vi/${lastPlayed.id}/hqdefault.jpg`}
+                                                            src={`https://img.youtube.com/vi/${videoId || lastPlayed?.id}/hqdefault.jpg`}
                                                             alt="Reflection"
                                                             className="w-full aspect-square object-cover scale-y-[-1] opacity-60 blur-[1px]"
                                                             style={{ maskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 100%)', WebkitMaskImage: 'linear-gradient(to bottom, rgba(0,0,0,1) 10%, rgba(0,0,0,0) 100%)' }}
@@ -1228,11 +1229,10 @@ export default function Ipod3D() {
             if ((!videoTitle || videoTitle === 'Loading title...' || !channel) && newId) {
                 try {
                     console.log("Fetching fallback metadata for:", newId);
-                    const { items } = await searchYouTube(newId);
-                    if (items && items.length > 0) {
-                        const matchItem = items[0]; // ID search should return exact match
-                        title = matchItem.title;
-                        channel = matchItem.channel;
+                    const details = await fetchVideoDetails(newId);
+                    if (details) {
+                        title = details.title;
+                        channel = details.channel;
                     }
                 } catch (err) {
                     console.error("Fallback metadata fetch failed:", err);
@@ -1334,20 +1334,25 @@ export default function Ipod3D() {
     };
 
     const playHistoryItem = async (index: number) => {
-        // Ensure this logic handles everything correctly
-        // We'll wrap this or similar logic in the handler
-
         // RE-IMPLEMENTATION TO ENSURE FULL CONTEXT PLAYBACK
+        // User expects "Up Next" to be subsequent items in the Visual List (Newest -> Oldest)
+        const reversedHistory = [...history].reverse();
+        const visualIndex = history.length - 1 - index;
+
         if (playingSource !== 'History') {
             setPlayingSource('History');
-            // If we switch to history, we must ensure queue covers history
-            if (queue !== history) {
-                setQueue(history);
-            }
+            setQueue(reversedHistory);
+        } else {
+            // Even if source is history, ensure queue matches current history state reversed
+            // (Optimization: could check if queue[0] === reversedHistory[0])
+            setQueue(reversedHistory);
         }
-        setCurrentIndex(index);
-        // Auto-play is handled by currentIndex effect usually
+
+        // We receive 'index' which is the index in the original (ascending) history array.
+        // We need to play the corresponding item in the reversed (descending) queue.
+        setCurrentIndex(visualIndex);
         setShowHome(false);
+        setHasStarted(true);
     };
 
     // Register Context Handler
@@ -1512,6 +1517,7 @@ export default function Ipod3D() {
         if (isLiked) {
             // Remove
             setIsLiked(false); // Optimistic
+            setLikedSongs(prev => prev.filter(s => s.video_id !== currentItem.id));
             await supabase.from('liked_songs').delete()
                 .eq('user_id', user.id)
                 .eq('video_id', currentItem.id);
@@ -1519,14 +1525,24 @@ export default function Ipod3D() {
             // Add
             setIsLiked(true); // Optimistic
             const duration = playerRef.current?.getDuration() || 0;
-            await supabase.from('liked_songs').upsert({
+            const newLike = {
                 user_id: user.id,
                 video_id: currentItem.id,
                 title: currentItem.title,
                 url: currentItem.url,
                 channel: currentItem.channel || currentItem.author || "",
-                duration: Math.floor(duration)
-            }, { onConflict: 'user_id, video_id' });
+                duration: Math.floor(duration),
+                created_at: new Date().toISOString()
+            };
+
+            // Optimistic Add
+            const tempId = Date.now();
+            setLikedSongs(prev => [{ ...newLike, id: tempId }, ...prev]);
+
+            const { data } = await supabase.from('liked_songs').upsert(newLike, { onConflict: 'user_id, video_id' }).select().single();
+            if (data) {
+                setLikedSongs(prev => prev.map(p => p.id === tempId ? data : p));
+            }
         }
     };
 
