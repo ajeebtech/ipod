@@ -232,21 +232,18 @@ interface ScreenOverlayProps {
     onToggleLikeItem: (item: any) => void;
     isLooping: boolean;
     onToggleLoop: () => void;
+    screenConfig: { x: number, y: number, scale: number };
+    isCalibrating: boolean; // Added prop
 }
 
-import { useControls } from 'leva';
-
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem, isLooping, onToggleLoop }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem, isLooping, onToggleLoop, screenConfig, isCalibrating }: ScreenOverlayProps) {
     // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
     const [viewTitle, setViewTitle] = useState(''); // For playlist header
     const playerRef = useRef<YouTubePlayer | null>(null);
 
-    const { screenPosition, screenRotation, screenScale } = useControls('Screen', {
-        screenPosition: { value: [0.015, 0.05, 0.00], step: 0.001 },
-        screenRotation: { value: [-0.10, 1.57, 0.10], step: 0.01 },
-        screenScale: { value: 0.011, step: 0.0001 }
-    });
+    // --- LEVA REMOVED ---
+
 
     // --- Format Helper ---
     const formatTime = (seconds: number) => {
@@ -320,11 +317,11 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
             <Html
                 transform
-                occlude="raycast"
+                occlude={isCalibrating ? undefined : "raycast"} // Disable occlusion when calibrating
                 zIndexRange={[100, 0]}
-                position={screenPosition}
-                rotation={screenRotation}
-                scale={screenScale}
+                position={[screenConfig.x, screenConfig.y, 0.00]} // Using Config
+                rotation={[-0.10, 1.57, 0.10]}
+                scale={screenConfig.scale} // Using Config
                 style={{
                     width: '320px',
                     height: '240px',
@@ -743,6 +740,8 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
 
 import { usePlayer } from '../context/PlayerContext';
+import ScreenCalibration, { ScreenConfig } from './ScreenCalibration';
+import { Settings } from 'lucide-react';
 
 export default function Ipod3D() {
     const { setHistory: setCtxHistory, setQueue: setCtxQueue, setCurrentIndex: setCtxCurrentIndex, registerPlayHandler } = usePlayer();
@@ -758,6 +757,54 @@ export default function Ipod3D() {
 
     const [showHome, setShowHome] = useState(false);
     const [showArrow, setShowArrow] = useState(true);
+
+    // --- Screen Calibration State ---
+    const [isCalibrating, setIsCalibrating] = useState(false);
+    const [screenConfig, setScreenConfig] = useState<ScreenConfig>({
+        x: 0.015,
+        y: 0.05,
+        scale: 0.011
+    });
+
+    // Load Calibration Settings
+    useEffect(() => {
+        if (isSignedIn && user) {
+            const fetchSettings = async () => {
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('screen_settings')
+                    .eq('user_id', user.id)
+                    .single();
+
+                if (data && data.screen_settings) {
+                    setScreenConfig(data.screen_settings);
+                }
+            };
+            fetchSettings();
+        }
+    }, [isSignedIn, user]);
+
+    const handleSaveCalibration = async (newConfig: ScreenConfig) => {
+        setScreenConfig(newConfig);
+        setIsCalibrating(false);
+
+        if (isSignedIn && user) {
+            // Upsert profile settings
+            const { error } = await supabase
+                .from('profiles')
+                .upsert({
+                    user_id: user.id,
+                    screen_settings: newConfig,
+                    updated_at: new Date().toISOString()
+                });
+
+            if (error) {
+                console.error("Failed to save screen settings:", error);
+                alert("Failed to save settings. Please try again.");
+            }
+        }
+    };
+
 
     // --- Player Tracking State (Lifted for MiniPlayer) ---
     const [progress, setProgress] = useState(0);
@@ -2077,6 +2124,8 @@ export default function Ipod3D() {
                                 isPaused={isPaused}
                                 onLoad={() => setIsModelLoaded(true)}
                                 onAddToPlaylist={() => setIsPlaylistModalOpen(true)}
+                                screenConfig={screenConfig}
+                                isCalibrating={isCalibrating} // Pass down prop
                             />
                         </group>
                     </Suspense>
@@ -2133,6 +2182,26 @@ export default function Ipod3D() {
                     duration: duration,
                 } : null}
             />
+
+            {/* Calibration Controls Overlay */}
+            <ScreenCalibration
+                isOpen={isCalibrating}
+                onClose={() => setIsCalibrating(false)}
+                onSave={handleSaveCalibration}
+                initialConfig={screenConfig}
+                onConfigChange={setScreenConfig} // Real-time update
+            />
+
+            {/* Calibration Trigger Button (Hidden if calibrating or not loaded) */}
+            {isModelLoaded && !isCalibrating && (
+                <button
+                    onClick={() => setIsCalibrating(true)}
+                    className="fixed bottom-8 left-8 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-full text-white/50 hover:text-white transition-all z-40 group"
+                    title="Calibrate Screen Position"
+                >
+                    <Settings size={20} className="group-hover:rotate-45 transition-transform duration-500" />
+                </button>
+            )}
         </>
     );
 }
