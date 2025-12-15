@@ -234,11 +234,19 @@ interface ScreenOverlayProps {
     onToggleLoop: () => void;
 }
 
+import { useControls } from 'leva';
+
 function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem, isLooping, onToggleLoop }: ScreenOverlayProps) {
     // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
     const [viewTitle, setViewTitle] = useState(''); // For playlist header
     const playerRef = useRef<YouTubePlayer | null>(null);
+
+    const { screenPosition, screenRotation, screenScale } = useControls('Screen', {
+        screenPosition: { value: [0.015, 0.05, 0.00], step: 0.001 },
+        screenRotation: { value: [-0.10, 1.57, 0.10], step: 0.01 },
+        screenScale: { value: 0.011, step: 0.0001 }
+    });
 
     // --- Format Helper ---
     const formatTime = (seconds: number) => {
@@ -314,9 +322,9 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                 transform
                 occlude="raycast"
                 zIndexRange={[100, 0]}
-                position={[0.015, 0.05, 0.00]}
-                rotation={[-0.10, 1.57, 0.10]}
-                scale={0.011}
+                position={screenPosition}
+                rotation={screenRotation}
+                scale={screenScale}
                 style={{
                     width: '320px',
                     height: '240px',
