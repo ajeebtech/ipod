@@ -2196,7 +2196,7 @@ export default function Ipod3D() {
             {isModelLoaded && !isCalibrating && (
                 <button
                     onClick={() => setIsCalibrating(true)}
-                    className="fixed bottom-8 left-8 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-full text-white/50 hover:text-white transition-all z-40 group"
+                    className="fixed bottom-8 left-8 p-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-full text-white/50 hover:text-white transition-all z-[100] group"
                     title="Calibrate Screen Position"
                 >
                     <Settings size={20} className="group-hover:rotate-45 transition-transform duration-500" />
