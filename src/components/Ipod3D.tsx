@@ -298,6 +298,10 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
     const handleInternalPlayerReady = (event: any) => {
         playerRef.current = event.target;
+        // Force low quality to save data
+        if (event.target.setPlaybackQuality) {
+            event.target.setPlaybackQuality('small');
+        }
         onPlayerReady(event.target);
     };
 
