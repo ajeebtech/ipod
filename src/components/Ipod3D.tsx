@@ -239,6 +239,20 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
     const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
     const [viewTitle, setViewTitle] = useState(''); // For playlist header
     const playerRef = useRef<YouTubePlayer | null>(null);
+    const progressBarRef = useRef<HTMLDivElement>(null);
+
+    const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!progressBarRef.current || !playerRef.current || !duration) return;
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const width = rect.width;
+        const percent = Math.max(0, Math.min(1, x / width));
+        const newTime = percent * duration;
+
+        if (playerRef.current.seekTo) {
+            playerRef.current.seekTo(newTime, true);
+        }
+    };
 
     // --- Format Helper ---
     const formatTime = (seconds: number) => {
@@ -714,7 +728,11 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
 
                             {/* Bottom: Progress Bar */}
                             <div className="h-8 bg-[#f8f9fa] px-3 flex flex-col justify-center shrink-0 border-t border-[#e5e7eb]">
-                                <div className="w-full h-1.5 bg-[#d1d5db] rounded-sm overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)]">
+                                <div
+                                    ref={progressBarRef}
+                                    onClick={handleSeek}
+                                    className="w-full h-1.5 bg-[#d1d5db] rounded-sm overflow-hidden shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] cursor-pointer hover:scale-y-150 transition-transform origin-bottom group/progress"
+                                >
                                     <div
                                         className="h-full bg-gradient-to-r from-[#6ba4ef] to-[#407ad6] shadow-sm relative"
                                         style={{ width: `${progress}%` }}
@@ -2078,7 +2096,7 @@ export default function Ipod3D() {
                     </Suspense>
 
                     <Environment preset="studio" />
-                    <OrbitControls enableZoom={true} minDistance={0.69} maxDistance={0.69} />
+                    <OrbitControls enableZoom={true} minDistance={0.69} maxDistance={0.69} enablePan={false} />
                     <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
                 </Canvas>
             </div>
