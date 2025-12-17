@@ -1726,7 +1726,8 @@ export default function Ipod3D() {
                             e.preventDefault();
                             handleConfirm();
                         }}
-                        className="fixed top-6 right-6 w-[300px] z-50 animate-in slide-in-from-top-4 fade-in duration-700"
+                        className={`fixed top-6 z-50 animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "left-4 right-4 w-auto max-w-[90%]" : "right-6 w-[300px]"
+                            }`}
                     >
                         <div
                             className={`
@@ -1801,12 +1802,12 @@ export default function Ipod3D() {
                                             handleConfirm();
                                         }
                                     }}
-                                    className="
+                                    className={`
                                 flex-1 bg-transparent py-2.5 pr-4
-                                text-stone-800 text-[13px] font-light tracking-wide
+                                text-stone-800 ${isMobile ? "text-base" : "text-[13px]"} font-light tracking-wide
                                 placeholder:text-stone-400 placeholder:font-light
                                 focus:outline-none
-                                "
+                                `}
                                 />
 
                                 {/* Animated submit button */}
@@ -1885,7 +1886,7 @@ export default function Ipod3D() {
                                 e.preventDefault();
                                 handleConfirm();
                             }}
-                            className="absolute top-8 left-1/2 -translate-x-1/2 w-full max-w-lg px-4 animate-in slide-in-from-top-4 fade-in duration-700"
+                            className={`absolute left-1/2 -translate-x-1/2 w-full max-w-lg px-4 animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "top-32 max-w-md" : "top-8"}`}
                         >
                             <div
                                 className={`
@@ -1959,12 +1960,12 @@ export default function Ipod3D() {
                                                 handleConfirm();
                                             }
                                         }}
-                                        className="
+                                        className={`
                                     flex-1 bg-transparent py-3 pr-4 
-                                    text-stone-800 text-[14px] font-light tracking-wide
+                                    text-stone-800 ${isMobile ? "text-base" : "text-[14px]"} font-light tracking-wide
                                     placeholder:text-stone-400 placeholder:font-light
                                     focus:outline-none
-                                "
+                                `}
                                         autoFocus
                                     />
 
