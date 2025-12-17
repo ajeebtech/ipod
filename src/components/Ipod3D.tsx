@@ -1726,7 +1726,7 @@ export default function Ipod3D() {
                             e.preventDefault();
                             handleConfirm();
                         }}
-                        className={`fixed top-6 z-50 animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "left-4 right-4 w-auto max-w-[90%]" : "right-6 w-[300px]"
+                        className={`fixed top-6 z-[200] animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "left-4 right-4 w-auto max-w-[90%]" : "right-6 w-[300px]"
                             }`}
                     >
                         <div
@@ -1842,7 +1842,7 @@ export default function Ipod3D() {
 
                             {/* Search Results Dropdown */}
                             {searchResults.length > 0 && isFocused && (
-                                <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1 z-[100]">
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1 z-[201]">
                                     {searchResults.map((result) => (
                                         <button
                                             key={result.id}
@@ -2055,7 +2055,7 @@ export default function Ipod3D() {
             }
 
 
-            <div className={`w-[370px] h-[600px] transition-all duration-500 ${isMobile ? "mx-auto" : ""}`}>
+            <div className={`w-[370px] h-[600px] transition-all duration-500 ${isMobile ? "mx-auto z-0" : ""}`}>
                 <Canvas
                     key={isMobile ? "mobile" : "desktop"}
                     camera={{ position: isMobile ? [0, 0, 13.5] : [0, 1.4, 15], fov: isMobile ? 25 : 20 }}

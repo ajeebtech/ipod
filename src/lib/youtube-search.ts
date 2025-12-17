@@ -59,7 +59,7 @@ export async function searchYouTube(query: string): Promise<{ items: YouTubeVide
 
     try {
         const response = await fetch(
-            `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=5&q=${encodeURIComponent(query)}&type=video&regionCode=US&key=${apiKey}`
+            `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=3&q=${encodeURIComponent(query)}&type=video&regionCode=US&key=${apiKey}`
         );
 
         if (!response.ok) {
