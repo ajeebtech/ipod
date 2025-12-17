@@ -1,19 +1,28 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
 
-export default clerkMiddleware(async (auth, req) => {
-    if (req.nextUrl.hostname === "ipod-five.vercel.app") {
-        const url = new URL(req.nextUrl.toString());
-        url.hostname = "ipod3d.site";
-        return NextResponse.redirect(url);
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export function middleware(request: NextRequest) {
+    // Check User Agent
+    const userAgent = request.headers.get('user-agent') || '';
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+
+    const { pathname } = request.nextUrl;
+
+    // Redirect to /mobile if on mobile device and accessing root
+    if (isMobile && pathname === '/') {
+        return NextResponse.redirect(new URL('/mobile', request.url));
     }
-});
+
+    // Redirect to / (desktop) if on desktop device and accessing /mobile ? 
+    // Maybe optional, but good for consistency. 
+    // User didn't ask for this explicitly, but it makes sense.
+    // Although simulated mobile views on desktop would break.
+    // Let's stick to ONLY mobile -> /mobile rule for now to be safe.
+
+    return NextResponse.next();
+}
 
 export const config = {
-    matcher: [
-        // Skip Next.js internals and all static files, unless found in search params
-        '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-        // Always run for API routes
-        '/(api|trpc)(.*)',
-    ],
+    matcher: ['/', '/mobile'],
 };
