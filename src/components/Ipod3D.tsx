@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Environment, ContactShadows, Html } from '@react-three/drei';
 import YouTube, { YouTubePlayer } from 'react-youtube';
+import { useMobile } from '../hooks/use-mobile';
 import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, Repeat, Shuffle, ChevronDown, Plus, Heart, Pin, Search, Battery, Home, X, ListMusic, Volume2, VolumeX } from 'lucide-react';
 import { searchYouTube, YouTubeVideo } from '../lib/youtube-search';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -232,9 +233,17 @@ interface ScreenOverlayProps {
     onToggleLikeItem: (item: any) => void;
     isLooping: boolean;
     onToggleLoop: () => void;
+    // Debug Props
+    screenConfig?: {
+        position: [number, number, number];
+        rotation: [number, number, number];
+        scale: number;
+        width: string;
+        height: string;
+    };
 }
 
-function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem, isLooping, onToggleLoop }: ScreenOverlayProps) {
+function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateChange, playingSource, isLiked, onToggleLike, user, likedSongs, onPlay, onUnlike, onGoHome, channelName, lastPlayed, onResume, showHome, progress, currentTime, duration, isPaused, onLoad, onAddToPlaylist, playlists, activePlaylistItems, onOpenPlaylist, onTogglePin, onToggleLikeItem, isLooping, onToggleLoop, screenConfig }: ScreenOverlayProps) {
     // Removed internal tracking state
     const [view, setView] = useState<'home' | 'liked_songs' | 'playlist'>('home');
     const [viewTitle, setViewTitle] = useState(''); // For playlist header
@@ -332,12 +341,12 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                 transform
                 occlude="raycast"
                 zIndexRange={[100, 0]}
-                position={[0.015, 0.05, 0.00]}
-                rotation={[-0.10, 1.57, 0.10]}
-                scale={0.011}
+                position={screenConfig?.position || [0.015, 0.05, 0.00]}
+                rotation={screenConfig?.rotation || [-0.10, 1.57, 0.10]}
+                scale={screenConfig?.scale || 0.011}
                 style={{
-                    width: '320px',
-                    height: '240px',
+                    width: screenConfig?.width || '320px',
+                    height: screenConfig?.height || '240px',
                     pointerEvents: 'none',
                 }}
             >
@@ -754,8 +763,6 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
     );
 }
 
-
-
 import { usePlayer } from '../context/PlayerContext';
 
 export default function Ipod3D() {
@@ -772,6 +779,22 @@ export default function Ipod3D() {
 
     const [showHome, setShowHome] = useState(false);
     const [showArrow, setShowArrow] = useState(true);
+
+    const isMobile = useMobile();
+
+    // --- Leva Debug Controls ---
+    // --- Mobile/Desktop Camera Config ---
+    const cameraPosition = isMobile ? [10, 0, 13.5] : [0, 1.4, 15];
+    const cameraFov = isMobile ? 35 : 20;
+
+    // Screen Config (Static)
+    const screenConfig = {
+        position: [0.015, 0.05, 0.00] as [number, number, number],
+        rotation: [-0.10, 1.57, 0.10] as [number, number, number],
+        scale: 0.011,
+        width: '320px',
+        height: '240px'
+    };
 
     // --- Player Tracking State (Lifted for MiniPlayer) ---
     const [progress, setProgress] = useState(0);
@@ -1624,7 +1647,13 @@ export default function Ipod3D() {
 
             {/* Sidebar */}
             {hasStarted && (
-                <div className="fixed top-8 left-8 z-50 flex flex-col gap-4 w-64">
+                <div className={`
+                    fixed z-50 flex flex-col gap-4 transition-all duration-300
+                    ${isMobile
+                        ? "bottom-20 right-5 w-64 scale-90 origin-bottom-right"
+                        : "top-8 left-8 w-64"
+                    }
+                `}>
                     <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/20">
                         <div className="flex justify-between items-center mb-4">
                             <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Player</span>
@@ -1712,9 +1741,15 @@ export default function Ipod3D() {
 
                             <div className="relative flex items-center">
                                 {showArrow && (
-                                    <div className="absolute right-[100%] top-1/2 -translate-y-1/2 flex items-center pr-2 pointer-events-none opacity-80">
-                                        <span className="text-sm font-serif italic text-stone-500 whitespace-nowrap pb-2 mr-1">search on youtube</span>
-                                        <HandDrawnArrow className="text-stone-600 rotate-12 transform translate-y-2" />
+                                    <div className={`absolute pointer-events-none opacity-80 flex items-center ${isMobile
+                                        ? "top-full right-4 mt-2 flex-col-reverse"
+                                        : "right-[100%] top-1/2 -translate-y-1/2 pr-2"
+                                        }`}>
+                                        <span className={`text-sm font-serif italic text-stone-500 whitespace-nowrap ${isMobile ? "mt-1" : "pb-2 mr-1"}`}>
+                                            search on youtube
+                                        </span>
+                                        <HandDrawnArrow className={`text-stone-600 transform ${isMobile ? "-rotate-90 scale-75" : "rotate-12 translate-y-2"
+                                            }`} />
                                     </div>
                                 )}
                                 {/* Minimal link icon */}
@@ -1865,9 +1900,15 @@ export default function Ipod3D() {
 
                                 <div className="relative flex items-center">
                                     {showArrow && (
-                                        <div className="absolute right-[100%] top-1/2 -translate-y-1/2 flex items-center pr-2 pointer-events-none opacity-80">
-                                            <span className="text-sm font-serif italic text-stone-500 whitespace-nowrap pb-2 mr-1">paste your link</span>
-                                            <HandDrawnArrow className="text-stone-600 rotate-12 transform translate-y-2" />
+                                        <div className={`absolute pointer-events-none opacity-80 flex items-center ${isMobile
+                                            ? "top-full left-1/2 -translate-x-1/2 mt-4 flex-col-reverse"
+                                            : "right-[100%] top-1/2 -translate-y-1/2 pr-2"
+                                            }`}>
+                                            <span className={`text-sm font-serif italic text-stone-500 whitespace-nowrap ${isMobile ? "mt-1" : "pb-2 mr-1"}`}>
+                                                paste your link
+                                            </span>
+                                            <HandDrawnArrow className={`text-stone-600 transform ${isMobile ? "-rotate-90 scale-75" : "rotate-12 translate-y-2"
+                                                }`} />
                                         </div>
                                     )}
                                     {/* Minimal link icon */}
@@ -2013,8 +2054,11 @@ export default function Ipod3D() {
             }
 
 
-            <div className="w-[370px] h-[600px]">
-                <Canvas camera={{ position: [0, 1.4, 15], fov: 20 }}>
+            <div className={`w-[370px] h-[600px] transition-all duration-500 ${isMobile ? "mx-auto" : ""}`}>
+                <Canvas
+                    key={isMobile ? "mobile" : "desktop"}
+                    camera={{ position: isMobile ? [0, 0, 13.5] : [0, 1.4, 15], fov: isMobile ? 25 : 20 }}
+                >
                     <ambientLight intensity={0.5} />
                     <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} intensity={1} />
                     <pointLight position={[-10, -10, -10]} intensity={1} />
@@ -2091,23 +2135,26 @@ export default function Ipod3D() {
                                 isPaused={isPaused}
                                 onLoad={() => setIsModelLoaded(true)}
                                 onAddToPlaylist={() => setIsPlaylistModalOpen(true)}
+                                screenConfig={screenConfig}
                             />
                         </group>
                     </Suspense>
 
                     <Environment preset="studio" />
-                    <OrbitControls enableZoom={true} minDistance={0.69} maxDistance={0.69} enablePan={false} />
+                    <OrbitControls makeDefault enableZoom={true} minDistance={0.69} maxDistance={0.69} enablePan={false} />
                     <ContactShadows position={[0, -2, 0]} opacity={0.4} scale={10} blur={2.5} far={4} />
                 </Canvas>
             </div>
-            {/* Zoom Instruction Hint */}
-            <div className="fixed bottom-20 left-8 text-[10px] font-medium text-stone-500 opacity-60 pointer-events-none select-none z-0">
-                if you can't see the screen, try {zoomKey} + or {zoomKey} -
-            </div>
+            {/* Zoom Instruction Hint - ONLY ON DESKTOP */}
+            {!isMobile && (
+                <div className="fixed bottom-20 left-8 text-[10px] font-medium text-stone-500 opacity-60 pointer-events-none select-none z-0">
+                    if you can't see the screen, try {zoomKey} + or {zoomKey} -
+                </div>
+            )}
 
             {/* Zoom Alert Popup */}
             <AnimatePresence>
-                {showZoomAlert && (
+                {showZoomAlert && !isMobile && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}

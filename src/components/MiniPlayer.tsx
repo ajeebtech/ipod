@@ -1,6 +1,7 @@
 import React from 'react';
 import { Play, Pause } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useMobile } from '../hooks/use-mobile';
 
 interface MiniPlayerProps {
     videoId: string;
@@ -41,16 +42,24 @@ export default function MiniPlayer({
     onTogglePlay,
     onResume
 }: MiniPlayerProps) {
+    const isMobile = useMobile();
+
     return (
         <motion.div
             onClick={onResume}
-            className="fixed top-12 left-1/2 -translate-x-1/2 z-[100] w-[300px] bg-white/90 backdrop-blur-xl rounded-2xl border border-black/5 p-2 shadow-xl flex items-center gap-3 cursor-pointer group"
+            className={`
+                fixed z-[100] bg-white/90 backdrop-blur-xl rounded-2xl border border-black/5 p-2 shadow-xl flex items-center gap-3 cursor-pointer group
+                ${isMobile
+                    ? "bottom-24 right-4 w-[240px] scale-90 origin-bottom-right"
+                    : "top-12 left-1/2 -translate-x-1/2 w-[300px]"
+                }
+            `}
             initial={{ opacity: 0, y: 200, scale: 0.5 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
+            animate={{ opacity: 1, y: 0, scale: isMobile ? 0.9 : 1 }}
             exit={{ opacity: 0, y: 200, scale: 0.5 }}
             transition={{ type: "spring", stiffness: 280, damping: 20 }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: isMobile ? 0.92 : 1.02 }}
+            whileTap={{ scale: isMobile ? 0.88 : 0.98 }}
         >
             {/* Info Section */}
             <div className="flex items-center gap-2.5 shrink-0">
