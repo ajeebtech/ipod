@@ -97,20 +97,18 @@ export default function IpodScreenUI(props: IpodScreenUIProps) {
                 .ipod-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #2563eb; }
             `}</style>
 
-            {/* Hidden Player */}
-            {currentVideoId && (
-                <div className="absolute top-0 left-0 w-1 h-1 opacity-0 pointer-events-none overflow-hidden z-0">
-                    <YouTube
-                        videoId={currentVideoId}
-                        onReady={handlePlayerReady}
-                        onStateChange={handleStateChange}
-                        opts={{
-                            width: '100%', height: '100%',
-                            playerVars: { autoplay: 1, controls: 0, fs: 0, modestbranding: 1, rel: 0, disablekb: 1, showinfo: 0, iv_load_policy: 3 }
-                        }}
-                    />
-                </div>
-            )}
+            {/* Hidden Player - Always mounted. Sized up to avoid mobile throttling (1x1 pixels often pausing). */}
+            <div className="absolute top-0 left-0 w-[300px] h-[200px] opacity-[0.01] pointer-events-none overflow-hidden z-[-10]">
+                <YouTube
+                    videoId={currentVideoId || ''}
+                    onReady={handlePlayerReady}
+                    onStateChange={handleStateChange}
+                    opts={{
+                        width: '100%', height: '100%',
+                        playerVars: { autoplay: 1, playsinline: 1, controls: 0, fs: 0, modestbranding: 1, rel: 0, disablekb: 1, showinfo: 0, iv_load_policy: 3 }
+                    }}
+                />
+            </div>
 
             {showMenu ? (
                 // --- MENU VIEW ---

@@ -9,6 +9,11 @@ export default function MobileWarning() {
     useEffect(() => {
         // Function to check screen size
         const checkMobile = () => {
+            // Check if we are on the dedicated mobile route
+            if (window.location.pathname === '/mobile') {
+                return;
+            }
+
             // Check if screen width is less than 768px (typical tablet/mobile breakpoint)
             if (window.innerWidth < 768) {
                 // Check if user has already dismissed the warning in this session

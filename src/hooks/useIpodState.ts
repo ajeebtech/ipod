@@ -63,7 +63,7 @@ export interface IpodState {
     handleToggleLike: () => Promise<void>;
     handleOpenPlaylist: (playlistId: number) => Promise<void>;
     playVideoFromUrl: (url: string, channelName?: string, videoTitle?: string) => Promise<void>;
-    handlePlayerReady: (player: YouTubePlayer) => void;
+    handlePlayerReady: (event: any) => void;
     handleStateChange: (event: any) => void;
     onToggleLoop: () => void;
     onAddToPlaylist: () => void;
@@ -208,7 +208,8 @@ export function useIpodState() {
 
     // --- Actions ---
 
-    const handlePlayerReady = (player: YouTubePlayer) => {
+    const handlePlayerReady = (event: any) => {
+        const player = event.target;
         playerRef.current = player;
         if (player.getPlayerState() !== 1) player.playVideo();
     };
@@ -370,19 +371,19 @@ export function useIpodState() {
     // Playback Controls
     const handleSkip = () => { savePreference(); setHasStarted(true); };
     const togglePlayPause = () => {
-        if (playerRef.current) {
+        if (playerRef.current && typeof playerRef.current.playVideo === 'function' && typeof playerRef.current.pauseVideo === 'function') {
             if (isPlaying) playerRef.current.pauseVideo();
             else playerRef.current.playVideo();
         }
     };
     const handleSeek = (seconds: number) => {
-        if (playerRef.current && playerRef.current.getCurrentTime) {
+        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function' && typeof playerRef.current.seekTo === 'function') {
             playerRef.current.seekTo(playerRef.current.getCurrentTime() + seconds, true);
         }
     };
     // Explicit seek to Time
     const seekToTime = (time: number) => {
-        if (playerRef.current && playerRef.current.seekTo) {
+        if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
             playerRef.current.seekTo(time, true);
         }
     }
@@ -391,14 +392,14 @@ export function useIpodState() {
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newVolume = parseInt(e.target.value);
         setVolume(newVolume);
-        if (playerRef.current) {
+        if (playerRef.current && typeof playerRef.current.setVolume === 'function') {
             playerRef.current.setVolume(newVolume);
-            if (newVolume > 0 && isMuted) { setIsMuted(false); playerRef.current.unMute(); }
+            if (newVolume > 0 && isMuted && typeof playerRef.current.unMute === 'function') { setIsMuted(false); playerRef.current.unMute(); }
         }
     };
     const toggleMute = () => {
-        if (playerRef.current) {
-            if (isMuted) { playerRef.current.unMute(); setIsMuted(false); if (volume === 0) { setVolume(100); playerRef.current.setVolume(100); } }
+        if (playerRef.current && typeof playerRef.current.mute === 'function' && typeof playerRef.current.unMute === 'function') {
+            if (isMuted) { playerRef.current.unMute(); setIsMuted(false); if (volume === 0 && typeof playerRef.current.setVolume === 'function') { setVolume(100); playerRef.current.setVolume(100); } }
             else { playerRef.current.mute(); setIsMuted(true); }
         }
     };

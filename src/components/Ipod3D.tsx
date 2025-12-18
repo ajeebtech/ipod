@@ -593,9 +593,26 @@ function ScreenOverlay({ videoId, title, index, total, onPlayerReady, onStateCha
                                                         <li key={item.id} className="flex items-center gap-2 p-2 hover:bg-blue-50 transition-colors group">
                                                             <button
                                                                 onClick={async () => {
+                                                                    // Pass the full playlist context to onPlay
+                                                                    // We construct a special object or rely on handlePlay to handle lists?
+                                                                    // Actually, simplest is to pass the specific item, but we need the queue to update.
+                                                                    // Let's assume onPlay can assume context if we are in playlist view?
+                                                                    // No, better to pass the queue explicitly if possible, or have a specific handler.
+                                                                    // Let's try to update logic to:
+                                                                    // onPlay(item, activePlaylistItems); -> need to update prop signature.
+                                                                    // For now, let's just make sure it PLAYS even if single.
+                                                                    // The user said "do not even play".
+                                                                    // Maybe video_id mapping is wrong?
+                                                                    // item in activePlaylistItems has 'video_id'.
+                                                                    // onPlay expects { id: string, ... } usually.
+                                                                    // The code below does: id: item.video_id.
+                                                                    // It looks correct for single play.
+                                                                    // Let's check handlePlay.
                                                                     onPlay({
                                                                         ...item,
-                                                                        id: item.video_id
+                                                                        id: item.video_id,
+                                                                        context: 'playlist',
+                                                                        playlistItems: activePlaylistItems
                                                                     });
                                                                 }}
                                                                 className="flex-1 flex flex-col text-left min-w-0"
@@ -829,6 +846,10 @@ export default function Ipod3D() {
 
     // Playlist Modal State
     const [isPlaylistModalOpen, setIsPlaylistModalOpen] = useState(false);
+
+    // Playlist Input State
+    const [showPlaylistInput, setShowPlaylistInput] = useState(false);
+    const [playlistUrl, setPlaylistUrl] = useState('');
 
     useEffect(() => {
         if (typeof navigator !== 'undefined') {
@@ -1166,6 +1187,55 @@ export default function Ipod3D() {
         }
     };
 
+    // Sync History Effect
+    useEffect(() => {
+        if (!hasStarted || !currentVideoId || !isSignedIn || !user) return;
+
+        // Find the full item in queue (metadata might be better there)
+        const queueItem = queue.find(q => q.id === currentVideoId);
+        if (!queueItem) return;
+
+        const addToHistory = async () => {
+            // 1. Update Local History State
+            setHistory(prev => {
+                // Check if already latest
+                if (prev.length > 0 && prev[prev.length - 1].id === currentVideoId) {
+                    return prev;
+                }
+                const filtered = prev.filter(p => p.id !== currentVideoId);
+                return [...filtered, { ...queueItem, dbId: undefined }];
+            });
+
+            // 2. Update Supabase
+            try {
+                // Remove existing to bump timestamp
+                await supabase.from('history').delete().eq('user_id', user.id).eq('video_id', currentVideoId);
+
+                // Insert new
+                const { data } = await supabase.from('history').insert({
+                    user_id: user.id,
+                    video_id: currentVideoId,
+                    title: queueItem.title,
+                    url: queueItem.url,
+                    channel: queueItem.channel,
+                    // Sync playlist info if present to keep context, although request was about limiting clutter
+                    playlist_id: queueItem.playlistId,
+                    playlist_title: queueItem.playlistTitle
+                }).select().single();
+
+                // Update DB ID
+                if (data) {
+                    setHistory(prev => prev.map(p => p.id === currentVideoId ? { ...p, dbId: data.id } : p));
+                }
+            } catch (err) {
+                console.error("Error syncing history:", err);
+            }
+        };
+
+        addToHistory();
+
+    }, [currentVideoId, hasStarted, isSignedIn, user]);
+
     // Extracted Play Logic
     const playVideoFromUrl = async (url: string, channelName?: string, videoTitle?: string) => {
         const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
@@ -1181,63 +1251,35 @@ export default function Ipod3D() {
             const playlistItems = await fetchPlaylistItems(playlistId);
 
             if (playlistItems.items.length > 0) {
-                const newIds = new Set(playlistItems.items.map((i: any) => i.id));
+                // Map to Queue Items
+                const newQueueItems = playlistItems.items.map((item: any) => ({
+                    id: item.id,
+                    url: item.url,
+                    title: item.title,
+                    channel: item.channel,
+                    dbId: undefined, // Not in DB yet
+                    fromPlaylist: true,
+                    playlistId: playlistId,
+                    playlistTitle: playlistItems.title
+                }));
 
-                let dbItems: any[] = [];
-                if (isSignedIn && user) {
-                    await supabase
-                        .from('history')
-                        .delete()
-                        .eq('user_id', user.id)
-                        .in('video_id', Array.from(newIds));
+                // Set Queue directly
+                setQueue(newQueueItems);
 
-                    const itemsToInsert = playlistItems.items.map((item: any) => ({
-                        user_id: user.id,
-                        video_id: item.id,
-                        url: item.url,
-                        title: item.title,
-                        channel: item.channel,
-                        playlist_id: playlistId,
-                        playlist_title: playlistItems.title
-                    }));
-
-                    const { data } = await supabase.from('history').insert(itemsToInsert).select();
-                    if (data) dbItems = data;
+                // Calculate Jump Index
+                let jumpIndex = 0;
+                if (match && match[2] && match[2].length === 11) {
+                    const specificId = match[2];
+                    const specificIndex = newQueueItems.findIndex((h: any) => h.id === specificId);
+                    if (specificIndex !== -1) jumpIndex = specificIndex;
                 }
-
-                setHistory(prev => {
-                    const filtered = prev.filter(item => !newIds.has(item.id));
-                    const newHistoryItems = playlistItems.items.map((item: any) => {
-                        const dbItem = dbItems.find((d: any) => d.video_id === item.id);
-                        return {
-                            id: item.id,
-                            url: item.url,
-                            title: item.title,
-                            channel: item.channel,
-                            dbId: dbItem?.id,
-                            fromPlaylist: true,
-                            playlistId: playlistId,
-                            playlistTitle: playlistItems.title
-                        };
-                    });
-
-                    const nextHistory = [...filtered, ...newHistoryItems];
-                    setQueue(nextHistory);
-
-                    let jumpIndex = nextHistory.length - newHistoryItems.length; // Start of new items
-                    if (match && match[2] && match[2].length === 11) {
-                        const specificId = match[2];
-                        const specificIndex = nextHistory.findIndex(h => h.id === specificId);
-                        if (specificIndex !== -1) jumpIndex = specificIndex;
-                    }
-
-                    setCurrentIndex(jumpIndex);
-                    return nextHistory;
-                });
 
                 setVideoUrl('');
                 setHasStarted(true);
                 setPlayingSource('From URL');
+
+                // Set Current Index (This triggers the history sync useEffect)
+                setCurrentIndex(jumpIndex);
                 return;
             } else {
                 alert("Could not load playlist. Check your API Key or URL.");
@@ -1266,40 +1308,21 @@ export default function Ipod3D() {
                 }
             }
 
-            setHistory(prev => {
-                const filtered = prev.filter(item => item.id !== newId);
-                const newItem = { id: newId, url: url, title: title, channel: channel, dbId: undefined, fromPlaylist: false }; // dbId undefined initially
-                const nextHistory = [...filtered, newItem];
-                setQueue(nextHistory);
-                setCurrentIndex(nextHistory.length - 1);
-                return nextHistory;
+            const newItem = { id: newId, url: url, title: title, channel: channel, dbId: undefined, fromPlaylist: false };
+
+            // Update Queue: Append the new song
+            setQueue(prev => {
+                const filtered = prev.filter(p => p.id !== newId);
+                const nextQ = [...filtered, newItem];
+                // Defer setting index to the last item
+                setTimeout(() => setCurrentIndex(nextQ.length - 1), 0);
+                return nextQ;
             });
 
             setVideoUrl('');
             setHasStarted(true);
             setPlayingSource('From URL');
             setShowHome(false);
-
-            if (isSignedIn && user) {
-                // Remove existing entry if it exists to treat this as "latest"
-                await supabase
-                    .from('history')
-                    .delete()
-                    .eq('user_id', user.id)
-                    .eq('video_id', newId);
-
-                const { data, error } = await supabase
-                    .from('history')
-                    .insert([
-                        { user_id: user.id, video_id: newId, url: url, title: title, channel: channel }
-                    ])
-                    .select();
-
-                // Update dbId after insert
-                if (data && data[0]) {
-                    setHistory(prev => prev.map(item => item.id === newId ? { ...item, dbId: data[0].id } : item));
-                }
-            }
         }
     };
 
@@ -1339,6 +1362,15 @@ export default function Ipod3D() {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') handleConfirm();
+    };
+
+    const handlePlaylistSubmit = (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (playlistUrl.trim()) {
+            playVideoFromUrl(playlistUrl);
+            setPlaylistUrl('');
+            setShowPlaylistInput(false);
+        }
     };
 
     const togglePlayPause = () => {
@@ -1443,6 +1475,64 @@ export default function Ipod3D() {
 
 
     const handlePlayFromLiked = async (song: any) => {
+        if (song.context === 'playlist' && song.playlistItems) {
+            // PLAYLIST CONTEXT
+            const playlistQueue = song.playlistItems.map((item: any) => ({
+                id: item.video_id,
+                url: item.url,
+                title: item.title,
+                channel: item.channel,
+                dbId: undefined,
+                fromPlaylist: true, // This enables auto-play in handleStateChange
+                playlistId: item.playlist_id,
+                playlistTitle: item.playlist_title
+            }));
+
+            setQueue(playlistQueue);
+
+            const idx = playlistQueue.findIndex((q: any) => q.id === song.id); // song.id was set to video_id
+            setCurrentIndex(idx !== -1 ? idx : 0);
+
+            setHasStarted(true);
+            setPlayingSource('From URL'); // Use 'From URL' as it respects 'fromPlaylist' auto-play logic
+            setShowHome(false);
+
+            // Sync to History (Background) - Single Item
+            if (user) {
+                // We use the same sync logic as standard play
+                setHistory(prev => {
+                    // Check if already latest (optimization)
+                    const last = prev[prev.length - 1];
+                    if (last && last.id === song.id) return prev;
+
+                    const baseItem = playlistQueue.find((q: any) => q.id === song.id) || {
+                        id: song.id, title: song.title, url: song.url, channel: song.channel, dbId: undefined
+                    };
+
+                    const filtered = prev.filter(h => h.id !== song.id);
+                    return [...filtered, { ...baseItem, dbId: undefined }];
+                });
+
+                try {
+                    await supabase.from('history').delete().eq('user_id', user.id).eq('video_id', song.id);
+                    const { data } = await supabase.from('history').insert({
+                        user_id: user.id,
+                        video_id: song.id,
+                        title: song.title,
+                        url: song.url || `https://www.youtube.com/watch?v=${song.id}`,
+                        channel: song.channel
+                    }).select().single();
+
+                    if (data) {
+                        setHistory(prev => prev.map(p => p.id === song.id ? { ...p, dbId: data.id } : p));
+                    }
+                } catch (err) {
+                    console.error("History sync error", err);
+                }
+            }
+            return;
+        }
+
         // Set context to Liked Songs
         // This is a separate queue now.
 
@@ -1721,192 +1811,34 @@ export default function Ipod3D() {
             {/* Input Bar - Top Center (Persistent) */}
             {
                 hasStarted && (
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            handleConfirm();
-                        }}
-                        className={`fixed top-6 z-[200] animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "left-4 right-4 w-auto max-w-[90%]" : "right-6 w-[300px]"
-                            }`}
-                    >
-                        <div
-                            className={`
-                            relative backdrop-blur-xl bg-white/70 rounded-2xl 
-                            border border-white/50 shadow-lg
-                            transition-all duration-300 ease-out
-                            ${isFocused ? "shadow-xl shadow-stone-300/50 bg-white/90 scale-[1.02]" : ""}
-                        `}
-                        >
-                            {/* Subtle inner glow */}
-                            <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
-
-                            <div className="relative flex items-center">
-                                {showArrow && (
-                                    <div className={`absolute pointer-events-none opacity-80 flex items-center ${isMobile
-                                        ? "top-full right-4 mt-2 flex-col-reverse"
-                                        : "right-[100%] top-1/2 -translate-y-1/2 pr-2"
-                                        }`}>
-                                        <span className={`text-sm font-serif italic text-stone-500 whitespace-nowrap ${isMobile ? "mt-1" : "pb-2 mr-1"}`}>
-                                            search on youtube
-                                        </span>
-                                        <HandDrawnArrow className={`text-stone-600 transform ${isMobile ? "-rotate-90 scale-75" : "rotate-12 translate-y-2"
-                                            }`} />
-                                    </div>
-                                )}
-                                {/* Minimal link icon */}
-                                <div className="pl-5 pr-2">
-                                    <svg
-                                        className={`w-4 h-4 transition-colors duration-200 ${isFocused ? "text-stone-600" : "text-stone-400"}`}
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        strokeWidth={2}
-                                        stroke="currentColor"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
-                                        />
-                                    </svg>
-                                </div>
-
-                                <input
-                                    ref={inputRef}
-                                    type="text"
-                                    placeholder="Search YouTube"
-                                    value={videoUrl}
-                                    onChange={(e) => {
-                                        setVideoUrl(e.target.value);
-                                        // Live Search Debounce
-                                        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
-                                        if (e.target.value.trim().length > 2) {
-                                            searchTimeoutRef.current = setTimeout(() => {
-                                                handleConfirm();
-                                            }, 500);
-                                        } else if (e.target.value.trim().length === 0) {
-                                            setSearchResults([]);
-                                        }
-                                    }}
-                                    onFocus={() => {
-                                        setIsFocused(true);
-                                        setShowArrow(false);
-                                    }}
-                                    onBlur={() => {
-                                        // Delay blur to allow clicking results
-                                        setTimeout(() => setIsFocused(false), 200);
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            handleConfirm();
-                                        }
-                                    }}
-                                    className={`
-                                flex-1 bg-transparent py-2.5 pr-4
-                                text-stone-800 ${isMobile ? "text-base" : "text-[13px]"} font-light tracking-wide
-                                placeholder:text-stone-400 placeholder:font-light
-                                focus:outline-none
-                                `}
-                                />
-
-                                {/* Animated submit button */}
-                                <div className="pr-2">
-                                    <button
-                                        type="button"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            handleConfirm();
-                                        }}
-                                        className={`
-                                relative w-8 h-8 rounded-xl 
-                                bg-gradient-to-b from-stone-700 to-stone-900
-                                shadow-md hover:shadow-lg
-                                transition-all duration-200 ease-out
-                                hover:scale-105 active:scale-95
-                                flex items-center justify-center
-                                ${videoUrl.trim() ? "opacity-100" : "opacity-40"}
-                                `}
-                                        disabled={!videoUrl.trim()}
-                                    >
-                                        {/* Button shine */}
-                                        <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/20 to-transparent" />
-                                        {isSearching ? (
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        ) : (
-                                            <Search className="w-4 h-4 text-white relative z-10" />
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Search Results Dropdown */}
-                            {searchResults.length > 0 && isFocused && (
-                                <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1 z-[201]">
-                                    {searchResults.map((result) => (
-                                        <button
-                                            key={result.id}
-                                            type="button"
-                                            onClick={() => {
-                                                // Call playVideoFromUrl directly
-                                                // Call playVideoFromUrl directly
-                                                playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`, result.channel, result.title);
-                                                setSearchResults([]);
-                                                setSearchResults([]);
-                                            }}
-                                            className="w-full flex items-center gap-2 p-1.5 hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] rounded-lg transition-all text-left group"
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="text-xs font-medium text-gray-800 truncate group-hover:text-white">{result.title}</h4>
-                                                <p className="text-[10px] text-gray-500 truncate group-hover:text-white/90">{result.channel}</p>
-                                            </div>
-                                            <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 group-hover:text-white transition-opacity mr-2" fill="currentColor" />
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Error Message Display */}
-                            {searchError && (
-                                <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-red-50/90 backdrop-blur-md rounded-xl border border-red-200 text-red-600 text-xs text-center font-medium animate-in fade-in slide-in-from-top-2">
-                                    {searchError}
-                                </div>
-                            )}
-                        </div>
-                    </form>
-                )
-            }
-            {/* Initial Center Input Screen */}
-            {
-                !hasStarted && (
-                    <div className="fixed inset-0 z-[9999] bg-stone-100 flex flex-col items-center justify-center p-4 relative font-sans transition-all duration-1000">
-                        {/* URL Input - Top Center */}
+                    <div className={`fixed top-6 z-[200] flex flex-col items-center animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "left-4 right-4 w-auto max-w-[90%]" : "right-6 w-[300px]"
+                        }`}>
                         <form
                             onSubmit={(e) => {
                                 e.preventDefault();
                                 handleConfirm();
                             }}
-                            className={`absolute left-1/2 -translate-x-1/2 w-full max-w-lg px-4 animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "top-32 max-w-md" : "top-8"}`}
+                            className="w-full relative z-[500]"
                         >
                             <div
                                 className={`
-                                relative backdrop-blur-xl bg-white/70 rounded-2xl 
-                                border border-white/50 shadow-lg
-                                transition-all duration-300 ease-out
-                                ${isFocused ? "shadow-xl shadow-stone-300/50 bg-white/90 scale-[1.02]" : ""}
-                            `}
+                            relative backdrop-blur-xl bg-white/70 rounded-2xl 
+                            border border-white/50 shadow-lg
+                            transition-all duration-300 ease-out
+                            ${isFocused ? "shadow-xl shadow-stone-300/50 bg-white/90 scale-[1.02]" : ""}
+                        `}
                             >
                                 {/* Subtle inner glow */}
                                 <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
 
                                 <div className="relative flex items-center">
-                                    {showArrow && (
+                                    {showArrow && !showPlaylistInput && (
                                         <div className={`absolute pointer-events-none opacity-80 flex items-center ${isMobile
-                                            ? "top-full left-1/2 -translate-x-1/2 mt-4 flex-col-reverse"
+                                            ? "top-full right-4 mt-2 flex-col-reverse"
                                             : "right-[100%] top-1/2 -translate-y-1/2 pr-2"
                                             }`}>
                                             <span className={`text-sm font-serif italic text-stone-500 whitespace-nowrap ${isMobile ? "mt-1" : "pb-2 mr-1"}`}>
-                                                paste your link
+                                                search on youtube
                                             </span>
                                             <HandDrawnArrow className={`text-stone-600 transform ${isMobile ? "-rotate-90 scale-75" : "rotate-12 translate-y-2"
                                                 }`} />
@@ -1952,6 +1884,7 @@ export default function Ipod3D() {
                                             setShowArrow(false);
                                         }}
                                         onBlur={() => {
+                                            // Delay blur to allow clicking results
                                             setTimeout(() => setIsFocused(false), 200);
                                         }}
                                         onKeyDown={(e) => {
@@ -1961,27 +1894,30 @@ export default function Ipod3D() {
                                             }
                                         }}
                                         className={`
-                                    flex-1 bg-transparent py-3 pr-4 
-                                    text-stone-800 ${isMobile ? "text-base" : "text-[14px]"} font-light tracking-wide
-                                    placeholder:text-stone-400 placeholder:font-light
-                                    focus:outline-none
+                                flex-1 bg-transparent py-2.5 pr-4
+                                text-stone-800 ${isMobile ? "text-base" : "text-[13px]"} font-light tracking-wide
+                                placeholder:text-stone-400 placeholder:font-light
+                                focus:outline-none
                                 `}
-                                        autoFocus
                                     />
 
                                     {/* Animated submit button */}
                                     <div className="pr-2">
                                         <button
-                                            type="submit"
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                handleConfirm();
+                                            }}
                                             className={`
-                                    relative w-10 h-10 rounded-xl 
-                                    bg-gradient-to-b from-stone-700 to-stone-900
-                                    shadow-md hover:shadow-lg
-                                    transition-all duration-200 ease-out
-                                    hover:scale-105 active:scale-95
-                                    flex items-center justify-center
-                                    ${videoUrl.trim() ? "opacity-100" : "opacity-40"}
-                                    `}
+                                relative w-8 h-8 rounded-xl 
+                                bg-gradient-to-b from-stone-700 to-stone-900
+                                shadow-md hover:shadow-lg
+                                transition-all duration-200 ease-out
+                                hover:scale-105 active:scale-95
+                                flex items-center justify-center
+                                ${videoUrl.trim() ? "opacity-100" : "opacity-40"}
+                                `}
                                             disabled={!videoUrl.trim()}
                                         >
                                             {/* Button shine */}
@@ -1995,28 +1931,268 @@ export default function Ipod3D() {
                                     </div>
                                 </div>
 
-                                {/* Search Results Dropdown (Initial Screen) */}
+                                {/* Search Results Dropdown */}
                                 {searchResults.length > 0 && isFocused && (
-                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1">
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1 z-[300]">
                                         {searchResults.map((result) => (
                                             <button
                                                 key={result.id}
                                                 type="button"
                                                 onClick={() => {
+                                                    // Call playVideoFromUrl directly
+                                                    // Call playVideoFromUrl directly
                                                     playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`, result.channel, result.title);
                                                     setSearchResults([]);
+                                                    setSearchResults([]);
                                                 }}
-                                                className="w-full flex items-center gap-3 p-2 hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] rounded-xl transition-all text-left group"
+                                                className="w-full flex items-center gap-2 p-1.5 hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] rounded-lg transition-all text-left group"
                                             >
                                                 <div className="flex-1 min-w-0">
-                                                    <h4 className="text-sm font-medium text-gray-800 truncate group-hover:text-white">{result.title}</h4>
-                                                    <p className="text-[11px] text-gray-500 truncate group-hover:text-white/90">{result.channel}</p>
+                                                    <h4 className="text-xs font-medium text-gray-800 truncate group-hover:text-white">{result.title}</h4>
+                                                    <p className="text-[10px] text-gray-500 truncate group-hover:text-white/90">{result.channel}</p>
                                                 </div>
                                                 <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 group-hover:text-white transition-opacity mr-2" fill="currentColor" />
                                             </button>
                                         ))}
                                     </div>
                                 )}
+
+                                {/* Error Message Display */}
+                                {searchError && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-red-50/90 backdrop-blur-md rounded-xl border border-red-200 text-red-600 text-xs text-center font-medium animate-in fade-in slide-in-from-top-2 z-[290]">
+                                        {searchError}
+                                    </div>
+                                )}
+                            </div>
+                        </form>
+
+                        {/* Toggle Playlist Input Button */}
+                        <button
+                            onClick={() => setShowPlaylistInput(!showPlaylistInput)}
+                            className="mt-2 text-[10px] text-stone-500 hover:text-stone-800 transition-colors flex items-center gap-1 font-medium bg-white/50 px-3 py-1.5 rounded-full backdrop-blur-sm shadow-sm hover:bg-white/70"
+                        >
+                            <ListMusic size={12} />
+                            {showPlaylistInput ? "Hide Playlist Input" : "Paste Playlist Link"}
+                        </button>
+
+                        {/* Playlist Input Form */}
+                        <AnimatePresence>
+                            {showPlaylistInput && (
+                                <motion.form
+                                    initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                    animate={{ opacity: 1, height: 'auto', marginTop: 8 }}
+                                    exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                    onSubmit={handlePlaylistSubmit}
+                                    className="w-full overflow-hidden relative z-[100]"
+                                >
+                                    <div className="relative backdrop-blur-xl bg-white/70 rounded-2xl border border-white/50 shadow-lg p-1.5 flex items-center transition-all duration-300 focus-within:bg-white/90 focus-within:shadow-xl focus-within:scale-[1.01]">
+                                        <div className="pl-3 pr-2 text-stone-400">
+                                            <ListMusic size={16} />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Paste Playlist URL..."
+                                            value={playlistUrl}
+                                            onChange={(e) => setPlaylistUrl(e.target.value)}
+                                            className="flex-1 bg-transparent py-2 px-2 text-[12px] text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="p-2 bg-blue-500 rounded-xl text-white hover:bg-blue-600 transition-colors shadow-sm active:scale-95"
+                                        >
+                                            <Play size={14} fill="currentColor" />
+                                        </button>
+                                    </div>
+                                </motion.form>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                )
+            }
+            {/* Initial Center Input Screen */}
+            {
+                !hasStarted && (
+                    <div className="fixed inset-0 z-[9999] bg-stone-100 flex flex-col items-center justify-center p-4 relative font-sans transition-all duration-1000">
+                        {/* URL Input - Top Center */}
+                        <div
+                            className={`absolute left-1/2 -translate-x-1/2 w-full max-w-lg px-4 animate-in slide-in-from-top-4 fade-in duration-700 ${isMobile ? "top-32 max-w-md" : "top-8"}`}
+                        >
+                            <form
+                                onSubmit={(e) => {
+                                    e.preventDefault();
+                                    handleConfirm();
+                                }}
+                                className="relative z-[500]"
+                            >
+                                <div
+                                    className={`
+                                relative backdrop-blur-xl bg-white/70 rounded-2xl 
+                                border border-white/50 shadow-lg
+                                transition-all duration-300 ease-out
+                                ${isFocused ? "shadow-xl shadow-stone-300/50 bg-white/90 scale-[1.02]" : ""}
+                            `}
+                                >
+                                    {/* Subtle inner glow */}
+                                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/80 to-transparent pointer-events-none" />
+
+                                    <div className="relative flex items-center">
+                                        {showArrow && !showPlaylistInput && (
+                                            <div className={`absolute pointer-events-none opacity-80 flex items-center ${isMobile
+                                                ? "top-full left-1/2 -translate-x-1/2 mt-4 flex-col-reverse"
+                                                : "right-[100%] top-1/2 -translate-y-1/2 pr-2"
+                                                }`}>
+                                                <span className={`text-sm font-serif italic text-stone-500 whitespace-nowrap ${isMobile ? "mt-1" : "pb-2 mr-1"}`}>
+                                                    paste your link
+                                                </span>
+                                                <HandDrawnArrow className={`text-stone-600 transform ${isMobile ? "-rotate-90 scale-75" : "rotate-12 translate-y-2"
+                                                    }`} />
+                                            </div>
+                                        )}
+                                        {/* Minimal link icon */}
+                                        <div className="pl-5 pr-2">
+                                            <svg
+                                                className={`w-4 h-4 transition-colors duration-200 ${isFocused ? "text-stone-600" : "text-stone-400"}`}
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                                strokeWidth={2}
+                                                stroke="currentColor"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                                />
+                                            </svg>
+                                        </div>
+
+                                        <input
+                                            ref={inputRef}
+                                            type="text"
+                                            placeholder="Search YouTube"
+                                            value={videoUrl}
+                                            onChange={(e) => {
+                                                setVideoUrl(e.target.value);
+                                                // Live Search Debounce
+                                                if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+                                                if (e.target.value.trim().length > 2) {
+                                                    searchTimeoutRef.current = setTimeout(() => {
+                                                        handleConfirm();
+                                                    }, 500);
+                                                } else if (e.target.value.trim().length === 0) {
+                                                    setSearchResults([]);
+                                                }
+                                            }}
+                                            onFocus={() => {
+                                                setIsFocused(true);
+                                                setShowArrow(false);
+                                            }}
+                                            onBlur={() => {
+                                                setTimeout(() => setIsFocused(false), 200);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleConfirm();
+                                                }
+                                            }}
+                                            className={`
+                                    flex-1 bg-transparent py-3 pr-4 
+                                    text-stone-800 ${isMobile ? "text-base" : "text-[14px]"} font-light tracking-wide
+                                    placeholder:text-stone-400 placeholder:font-light
+                                    focus:outline-none
+                                `}
+                                            autoFocus
+                                        />
+
+                                        {/* Animated submit button */}
+                                        <div className="pr-2">
+                                            <button
+                                                type="submit"
+                                                className={`
+                                    relative w-10 h-10 rounded-xl 
+                                    bg-gradient-to-b from-stone-700 to-stone-900
+                                    shadow-md hover:shadow-lg
+                                    transition-all duration-200 ease-out
+                                    hover:scale-105 active:scale-95
+                                    flex items-center justify-center
+                                    ${videoUrl.trim() ? "opacity-100" : "opacity-40"}
+                                    `}
+                                                disabled={!videoUrl.trim()}
+                                            >
+                                                {/* Button shine */}
+                                                <div className="absolute inset-0 rounded-xl bg-gradient-to-b from-white/20 to-transparent" />
+                                                {isSearching ? (
+                                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                ) : (
+                                                    <Search className="w-4 h-4 text-white relative z-10" />
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Search Results Dropdown (Initial Screen) */}
+                                    {searchResults.length > 0 && isFocused && (
+                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/50 overflow-hidden divide-y divide-gray-100 p-1">
+                                            {searchResults.map((result) => (
+                                                <button
+                                                    key={result.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        playVideoFromUrl(`https://www.youtube.com/watch?v=${result.id}`, result.channel, result.title);
+                                                        setSearchResults([]);
+                                                    }}
+                                                    className="w-full flex items-center gap-3 p-2 hover:bg-gradient-to-b hover:from-[#5c9ae6] hover:to-[#407ad6] rounded-xl transition-all text-left group"
+                                                >
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="text-sm font-medium text-gray-800 truncate group-hover:text-white">{result.title}</h4>
+                                                        <p className="text-[11px] text-gray-500 truncate group-hover:text-white/90">{result.channel}</p>
+                                                    </div>
+                                                    <Play size={12} className="text-blue-500 opacity-0 group-hover:opacity-100 group-hover:text-white transition-opacity mr-2" fill="currentColor" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </form>
+
+                            {/* Center Screen Toggle */}
+                            <div className="flex flex-col items-center mt-4">
+                                <button
+                                    onClick={() => setShowPlaylistInput(!showPlaylistInput)}
+                                    className="text-[11px] text-stone-500 hover:text-stone-800 transition-colors flex items-center gap-1 font-medium bg-white/50 px-3 py-1.5 rounded-full backdrop-blur-sm"
+                                >
+                                    <ListMusic size={12} />
+                                    {showPlaylistInput ? "Hide Playlist Input" : "Or Paste Playlist Link"}
+                                </button>
+
+                                <AnimatePresence>
+                                    {showPlaylistInput && (
+                                        <motion.form
+                                            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                            animate={{ opacity: 1, height: 'auto', marginTop: 12 }}
+                                            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                            onSubmit={handlePlaylistSubmit}
+                                            className="w-full max-w-sm overflow-hidden"
+                                        >
+                                            <div className="relative backdrop-blur-xl bg-white/70 rounded-2xl border border-white/50 shadow-lg p-1.5 flex items-center">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Paste Playlist URL here..."
+                                                    value={playlistUrl}
+                                                    onChange={(e) => setPlaylistUrl(e.target.value)}
+                                                    className="flex-1 bg-transparent py-2.5 px-3 text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className="p-2 bg-blue-500 rounded-xl text-white hover:bg-blue-600 transition-colors shadow-sm"
+                                                >
+                                                    <Play size={14} fill="currentColor" />
+                                                </button>
+                                            </div>
+                                        </motion.form>
+                                    )}
+                                </AnimatePresence>
                             </div>
 
                             {/* Subtle hint text */}
@@ -2024,7 +2200,7 @@ export default function Ipod3D() {
                                 className={`
                             text-center text-[11px] text-stone-400 mt-2 font-light tracking-wide
                             transition-opacity duration-200
-                            ${isFocused ? "opacity-100" : "opacity-0"}
+                            ${isFocused && !showPlaylistInput ? "opacity-100" : "opacity-0"}
                             `}
                             >
                                 Press Enter or click play to start
@@ -2049,7 +2225,7 @@ export default function Ipod3D() {
                                     Skip
                                 </button>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 )
             }

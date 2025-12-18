@@ -99,35 +99,15 @@ export default function MobileIpodPage() {
 
                 {/* Click Wheel Area */}
                 <div className="relative w-48 h-48 rounded-full bg-white flex items-center justify-center shadow-lg active:scale-[0.99] transition-transform">
-                    {/* Center Button (Select/Play) - Actually Play/Pause is usually bottom. Center is Select. 
-                        But on iPod, Play/Pause is bottom. Center is "Select". 
-                        For this simple UI, Center -> Confirm/Select? Or Toggle Play? 
-                        Let's make Center -> Enter/Select (handleConfirm equivalent or just Toggle Play for simplicity if searching isn't primary).
-                        Actually, let's map Center to Toggle Play for now as it's the most common action if no menu nav. 
-                        But we have a Menu. 
-                        Let's map: 
-                        Top (Menu) -> handleGoHome
-                        Bottom (Play/Pause) -> togglePlayPause
-                        Left (Prev) -> playPrev
-                        Right (Next) -> playNext
-                        Center (Select) -> handleConfirm (if searching) or just play? 
-                        
-                        Real iPod: Center is Select. 
-                        UI has 'view' state. IpodScreenUI manages view internally. 
-                        We don't have access to 'setView' from here easily unless we lift 'view' state to hook.
-                        Currently 'view' state is inside IpodScreenUI. 
-                        So Center button can't navigate menus unless we refactor 'view' state to useIpodState.
-                        
-                        For MVP/User Request "click buttons in", they likely mean the playback controls.
-                    */}
+                    {/* Center Button (Select/Play) */}
                     <button
-                        className="w-16 h-16 rounded-full bg-gray-200 shadow-inner active:bg-gray-300 outline-none"
-                        onClick={(e) => { e.preventDefault(); ipodState.togglePlayPause(); }}
+                        className="w-16 h-16 rounded-full bg-gray-200 shadow-inner active:bg-gray-300 outline-none cursor-pointer z-10"
+                        onClick={() => ipodState.togglePlayPause()}
                     />
 
                     {/* Top: Menu */}
                     <button
-                        className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-12 flex items-start justify-center pt-2 outline-none"
+                        className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-12 flex items-start justify-center pt-2 outline-none cursor-pointer z-10"
                         onClick={() => ipodState.handleGoHome()}
                     >
                         <span className="text-[10px] font-bold text-gray-400">MENU</span>
@@ -135,7 +115,7 @@ export default function MobileIpodPage() {
 
                     {/* Bottom: Play/Pause */}
                     <button
-                        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-12 flex items-end justify-center pb-2 outline-none"
+                        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-12 flex items-end justify-center pb-2 outline-none cursor-pointer z-10"
                         onClick={() => ipodState.togglePlayPause()}
                     >
                         <span className="text-[10px] font-bold text-gray-400">
@@ -145,7 +125,7 @@ export default function MobileIpodPage() {
 
                     {/* Left: Prev */}
                     <button
-                        className="absolute left-0 top-1/2 -translate-y-1/2 h-16 w-12 flex items-center justify-start pl-2 outline-none"
+                        className="absolute left-0 top-1/2 -translate-y-1/2 h-16 w-12 flex items-center justify-start pl-2 outline-none cursor-pointer z-10"
                         onClick={() => ipodState.playPrev()}
                     >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19V5M19 12H5M5 5L5 19" strokeWidth={2} /></svg>
@@ -153,13 +133,31 @@ export default function MobileIpodPage() {
 
                     {/* Right: Next */}
                     <button
-                        className="absolute right-0 top-1/2 -translate-y-1/2 h-16 w-12 flex items-center justify-end pr-2 outline-none"
+                        className="absolute right-0 top-1/2 -translate-y-1/2 h-16 w-12 flex items-center justify-end pr-2 outline-none cursor-pointer z-10"
                         onClick={() => ipodState.playNext()}
                     >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5V19M19 5L5 19" strokeWidth={2} /></svg>
                     </button>
                 </div>
 
+            </div>
+
+            {/* Show MiniPlayer on mobile too? The className above hid it on small screens? `hidden md:block`?
+                No, I want it VISIBLE. 
+                I'll use the same class as Ipod3D mobile logic.
+            */}
+            <div className="absolute z-40 bottom-24 right-4 w-[240px] scale-90 origin-bottom-right sm:bottom-20 sm:right-5 sm:w-64">
+                <MiniPlayer
+                    videoId={ipodState.currentVideoId || ''}
+                    title={ipodState.queue[ipodState.currentIndex]?.title || ''}
+                    artist={ipodState.queue[ipodState.currentIndex]?.channel || ''}
+                    progress={ipodState.progress}
+                    currentTime={ipodState.currentTime}
+                    duration={ipodState.duration}
+                    isPaused={ipodState.isPaused}
+                    onTogglePlay={ipodState.togglePlayPause}
+                    onResume={() => { ipodState.setHasStarted(true); ipodState.togglePlayPause(); }}
+                />
             </div>
 
             {/* Modals */}

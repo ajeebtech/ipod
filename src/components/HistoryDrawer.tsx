@@ -105,13 +105,11 @@ export function HistoryDrawer() {
                         ) : (
                             reversedHistory.map((item, index) => (
                                 <motion.div
-                                    key={`${item.id}-${index}`}
+                                    key={item.id}
+                                    layout={true}
                                     variants={itemVariants as any}
                                     className="flex items-center gap-3 p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 hover:bg-blue-600 dark:hover:bg-blue-600 transition-colors cursor-pointer group"
                                     onClick={() => {
-                                        // We need to find the correct index in the original array
-                                        // The original array is 'history'.
-                                        // The item we clicked corresponds to history[history.length - 1 - index]
                                         playSongFromHistory(history.length - 1 - index);
                                     }}
                                 >
@@ -143,7 +141,7 @@ export function HistoryDrawer() {
                         </DrawerFooter>
                     </motion.div>
                 </motion.div>
-            </DrawerContent>
-        </Drawer>
+            </DrawerContent >
+        </Drawer >
     );
 }
